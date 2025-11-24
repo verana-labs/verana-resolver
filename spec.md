@@ -129,8 +129,8 @@ verifiablePublicRegistries: [
       "name": "vpr:verana:vna-mainnet-1",
       "baseurls": [
         "https://indexer-1/"
-      ]
-      "version": "1"
+      ],
+      "version": "1",
       "production": true
     }
   ]
