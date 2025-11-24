@@ -275,7 +275,6 @@ Here is an interpretation of the [verifiable trust spec](https://verana-labs.git
 - a **VTC (Verifiable Trust Credential)** is **trustable** if and only if:
   - it is cryptographically verified (signature match issuer public key)
   - it is not revoked
-  - the credential `issuanceDate` is proved
   - the issuer of the VTC had a valid issuer permission at the `BlockHeight` the credential was issued
   - the issuer of the VTC is a Verifiable Service
   - the schema of the VTC is a trustable VTJSC (Verifiable Trust Json Schema Credential)
@@ -303,7 +302,7 @@ Here is an interpretation of the [verifiable trust spec](https://verana-labs.git
 
 At the end, for a DID to be included in the **trust index**, it MUST be a **Verifiable Service**
 
-### 9.2 Proving `issuanceDate` and Getting `issuanceBlockHeight`
+### 9.2 Getting date of issuance of a credential
 
 In order to get the `issuanceBlockHeight` for a Credential:
 
@@ -312,12 +311,9 @@ In order to get the `issuanceBlockHeight` for a Credential:
 
 if no `CredentialIssued` is found, credential is not trustable.
 
-If `CredentialIssued` is found, verify that the corresponding date matches the `issuanceDate` of the credential.
+If `CredentialIssued` is found `CredentialIssued.issuanceBlockHeight` can be considered.
 
-- if it doesn't match, credential is not trustable
-- else credential is trustable and `CredentialIssued.issuanceBlockHeight` can be considered.
-
-> Note: this is not implemented yet in indexer. Furthermore, blockchain transaction are not implemented in the vs-agent yet. In the meantime, always consider `issuanceDate` is valid.
+> Note: this is not implemented yet in indexer. Furthermore, blockchain transaction are not implemented in the vs-agent yet. In the meantime, always consider a credential was issued when the issuer permission was valid.
 
 ### 9.3 Resolution Required Steps
 
