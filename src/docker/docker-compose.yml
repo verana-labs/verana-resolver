@@ -1,0 +1,49 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: psql_verana_resolver
+    pull_policy: if_not_present
+    env_file:
+      - ../../.env
+    environment:
+      POSTGRES_USER: ${DB_USER:-verana_resolver_user}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-verana_password}
+      POSTGRES_HOST_AUTH_METHOD: trust
+      POSTGRES_DB: ${DB_NAME:-verana_resolver}
+      PGDATA: /var/lib/postgresql/data
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "${DB_PORT:-5435}:5432"
+    networks:
+      - verana-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-verana_resolver_user} -d ${DB_NAME:-verana_resolver}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  resolver:
+    build:
+      context: ../..
+      dockerfile: src/docker/Dockerfile
+    container_name: verana_resolver_app
+    environment:
+      NODE_ENV: ${NODE_ENV:-production}
+    ports:
+      - "${API_PORT:-4000}:4000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - verana-network
+
+volumes:
+  postgres_data:
+
+networks:
+  verana-network:
+    driver: bridge
+

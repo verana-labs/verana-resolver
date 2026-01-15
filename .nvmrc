@@ -1,0 +1,4 @@
+# Node.js version for Verana Trust Resolver
+# Use with: nvm use
+# Also requires: pnpm >= 8.0.0
+18.18.0
