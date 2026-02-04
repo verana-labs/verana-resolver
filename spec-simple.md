@@ -51,61 +51,7 @@ It interacts **only with the Indexer**, which itself is responsible for mirrorin
 
 ## 4. Indexer Integration Requirements
 
-### 4.1 Required Indexer Methods
-
-The Trust Resolver relies on the following Indexer capabilities:
-
-#### 4.1.1 `GetBlockHeight`
-
-Returns the **most recent block height** fully processed by the Indexer.
-
-#### 4.1.2 `AtBlockHeight` Header
-
-All Indexer methods (except `GetBlockHeight`) MUST accept the HTTP header:
-
-```
-AtBlockHeight: <blockHeight>
-```
-
-If this header is missing where required, the Indexer MUST return an error.
-
-Semantics: return the state of the underlying data as of the given block height.
-
-#### 4.1.3 ListChanges
-
-Returns all changed entities for a given block height.
-ListChanges MUST require the AtBlockHeight header.
-
-The set of changeable entities includes (as defined in the VPR data model):
-
-- TrustRegistry
-- CredentialSchema
-- Permission
-- PermissionSession
-- GovernanceFrameworkVersion
-- GovernanceFrameworkDocument
-- TrustDeposit
-- GlobalVariables
-
-The exact JSON structure of ListChanges is defined by the Indexer, but MUST allow the Trust Resolver to identify:
-
-- entity type
-- entity identifier
-- operation type (create / update / delete, if applicable)
-
-### 4.1.4 Real-Time Event (WebSocket)
-
-to receive notifications of block processing and trigger processing.
-
-Example:
-
-```json
-{
-  "type": "block-processed",
-  "height": 123456,
-  "timestamp": "2025-01-15T10:30:00Z"
-}
-```
+[Indexer API is available here](https://api.testnet.verana.network/static/openapi.yml)
 
 ## 5. Variables
 
@@ -255,50 +201,13 @@ The Trust Resolver implements the Verifiable Trust model directly and MUST perfo
 
 ### 9.1 Resolution Rules
 
-Here is an interpretation of the [verifiable trust spec](https://verana-labs.github.io/verifiable-trust-spec/), aligned to Verana:
-
-- a **VTC (Verifiable Trust Credential)** is **trustable** if and only if:
-  - it is cryptographically verified (signature match issuer public key)
-  - it is not revoked
-  - the issuer of the VTC had a **valid** issuer permission at the `BlockHeight` the credential was issued (must calculate digestSRI and check for its presence in indexer)
-  - the issuer of the VTC is a Verifiable Service
-  - the schema of the VTC is a trustable VTJSC (Verifiable Trust Json Schema Credential)
-
-- a **VTP (Verifiable Trust Presentation)** is **trustable** if and only if:
-  - it is a valid linked-vp
-  - it is referring to a **trustable** VTC, which subject is the DID that signed the VTP
-
-- a **VTJSC** is **trustable** if and only if:
-  - it is cryptographically verified (signature match issuer public key)
-  - it is not revoked
-  - the schema of the VTJSC is a JSON Schema that targets a CredentialSchema entry in a VPR, and its digest-sri matches. Targetted VPR network MUST be present in the container network white list
-  - the DID that issued the VTJSC is the same DID than the trust registry DID owner of the CredentialSchema entry
-  - the VTJSC MAY be present as a linked-vp in the DID document of the trust registry (if it is not present, it means new credentials cannot be issued for this schema)
-
-- an **ECSVTC (Essential Credential Schema Verifiable Trust Credential)** is **trustable** if and only if:
-  - it is a **trustable VTC**
-  - it is referring a **trustable VTJSC**
-
-- a service is a **Verifiable Service** if and only if:
-  - it is a resolvable DID
-  - one of the 2 following cases are true:
-    - its DID Document has a **trustable VTP** of a self-issued **trustable Service ECSVTC**, AND a (**trustable Organization ECSVTC** OR a **trustable Persona ECSVTC**)
-    - its DID Document presents a **trustable Service ECSVTC** issued by another DID, AND this DID is a **Verifiable Service** that is presenting a (**trustable Organization ECSVTC** OR a **trustable Persona ECSVTC**).
-
-At the end, for a DID to be included in the **trust index**, it MUST be a **Verifiable Service**
+Spec is available here: [verifiable trust spec](https://verana-labs.github.io/verifiable-trust-spec/)
 
 ### 9.2 Getting date of issuance of a credential
 
-In order to get the `issuanceBlockHeight` for a Credential:
+To evaluate if a service is verifiable, we MUST evidence that at the time the credentials it presents have been issued,  corresponding ISSUER(s) had a valid (active) permission to do so.
 
-- calculate `digest-sri` of normalized json of the credential.
-- load `CredentialIssued` from Indexer for the calculated `digest-sri` to get `issuanceBlockHeight`.
-
-if no `CredentialIssued` is found, credential is not trustable.
-
-If `CredentialIssued` is found `CredentialIssued.issuanceBlockHeight` can be considered.
-
-> Note: this is not implemented yet in indexer. Furthermore, blockchain transaction are not implemented in the vs-agent yet. In the meantime, always consider a credential was issued when the issuer permission was valid.
+As it is not yet implemented, at the moment we consider, for the issuance date of the credential, the current datetime. This will change in the future when we have a way for demostrating issuance date.
 
 ### 9.3 Resolution Required Steps
 
@@ -306,7 +215,7 @@ For each DID to evaluate (DID in DID Directory, TrustRegistry DID, Permission DI
 
 1. Evaluate if it is a **Verifiable Service** and produce a VerifiableTrustResolutionResult:
     - verifiableTrustStatus (TRUSTED (verifiable service), UNTRUSTED (not a verifiable service)).
-    - production (true of false, as defined in `verifiablePublicRegistries`). If mixed production/not production resulting state is not production.
+    - production (true of false). If mixed production/not production resulting state is false.
     - validCredentials[].
     - ignoredCredentials[] (invalid optional credentials).
     - failedCredentials[] (for diagnostic purposes).
