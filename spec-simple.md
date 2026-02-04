@@ -53,6 +53,8 @@ It interacts **only with the Indexer**, which itself is responsible for mirrorin
 
 [Indexer API is available here](https://api.testnet.verana.network/static/openapi.yml)
 
+Documentation in the swagger-ui: https://idx.testnet.verana.network/
+
 ## 5. Variables
 
 ### 5.1 State Variables

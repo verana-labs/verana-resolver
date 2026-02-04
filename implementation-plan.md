@@ -1,0 +1,1385 @@
+# Verana Trust Resolver - TypeScript Implementation Plan
+
+## Version 0.1 (Draft)
+
+**Author**: Cascade AI  
+**Date**: February 2026  
+**Status**: Proposal
+
+---
+
+## 1. Executive Summary
+
+This document outlines the implementation plan for the **Verana Trust Resolver Container** in TypeScript. The resolver is a core infrastructure component that ingests state from the Verana Indexer, resolves DIDs, dereferences verifiable credentials, validates trust according to the Verifiable Trust Specification, and exposes a GraphQL API for querying trusted services and ecosystems.
+
+### Key Design Principles
+
+- **Deterministic Processing**: Block-by-block ingestion with strict ordering
+- **TTL-Based Caching**: Separate caches for dereferenced objects and trust evaluations
+- **Consistency Guarantees**: GraphQL only exposes fully processed block state
+- **Resilient Retry Logic**: Graceful handling of transient failures
+- **Modular Architecture**: Clean separation of concerns for testability and maintainability
+
+---
+
+## 2. High-Level Architecture
+
+```mermaid
+flowchart TB
+    subgraph External["External Systems"]
+        IDX[("Verana Indexer<br/>(REST API)")]
+        DID[("DID Resolvers<br/>(did:web, did:cheqd, etc.)")]
+        EXT[("External Resources<br/>(VCs, VPs, JSON Schemas)")]
+    end
+
+    subgraph Resolver["Verana Trust Resolver Container"]
+        subgraph Ingestion["Ingestion Layer"]
+            POLL[Polling Engine]
+            SYNC[Block Sync Manager]
+        end
+
+        subgraph Processing["Processing Pipeline"]
+            P1[Pass1: Cache & Dereference]
+            P2[Pass2: Trust Evaluation]
+            RETRY[Retry Manager]
+        end
+
+        subgraph Cache["Caching Layer"]
+            OBJ_CACHE[(Object Cache<br/>CACHE_TTL)]
+            TRUST_CACHE[(Trust Cache<br/>TRUST_TTL)]
+        end
+
+        subgraph Storage["Storage Layer"]
+            DB[(PostgreSQL<br/>Local Projection)]
+        end
+
+        subgraph API["API Layer"]
+            GQL[GraphQL Server]
+        end
+    end
+
+    subgraph Clients["Clients"]
+        APP[Applications]
+        UI[Web UI]
+    end
+
+    IDX --> POLL
+    POLL --> SYNC
+    SYNC --> P1
+    P1 --> DID
+    P1 --> EXT
+    P1 --> OBJ_CACHE
+    P1 --> P2
+    P2 --> TRUST_CACHE
+    P2 --> DB
+    RETRY --> P1
+    RETRY --> P2
+    DB --> GQL
+    GQL --> APP
+    GQL --> UI
+```
+
+---
+
+## 3. Component Architecture
+
+```mermaid
+flowchart LR
+    subgraph Core["@verana/resolver-core"]
+        CONFIG[ConfigService]
+        LOGGER[LoggerService]
+        METRICS[MetricsService]
+    end
+
+    subgraph Indexer["@verana/indexer-client"]
+        IDX_CLIENT[IndexerClient]
+        IDX_TYPES[IndexerTypes]
+    end
+
+    subgraph DID["@verana/did-resolver"]
+        DID_RES[DIDResolver]
+        DID_DOC[DIDDocumentParser]
+        VP_DEREF[LinkedVPDereferencer]
+    end
+
+    subgraph Trust["@verana/trust-engine"]
+        EVAL[TrustEvaluator]
+        RULES[TrustRules]
+        PERM[PermissionValidator]
+    end
+
+    subgraph Cache["@verana/cache"]
+        OBJ[ObjectCache]
+        TRUST[TrustCache]
+        RETRY_Q[RetryQueue]
+    end
+
+    subgraph Store["@verana/store"]
+        REPO[Repositories]
+        ENTITIES[Entities]
+        MIGRATIONS[Migrations]
+    end
+
+    subgraph GraphQL["@verana/graphql"]
+        SCHEMA[Schema]
+        RESOLVERS[Resolvers]
+        LOADERS[DataLoaders]
+    end
+
+    subgraph App["@verana/resolver-app"]
+        MAIN[Main]
+        PIPELINE[Pipeline]
+        SCHEDULER[Scheduler]
+    end
+
+    Core --> App
+    Indexer --> App
+    DID --> App
+    Trust --> App
+    Cache --> App
+    Store --> App
+    GraphQL --> App
+```
+
+---
+
+## 4. Module Breakdown
+
+### 4.1 Core Modules
+
+| Module | Responsibility |
+|--------|----------------|
+| `@verana/resolver-core` | Configuration, logging, metrics, shared utilities |
+| `@verana/indexer-client` | HTTP client for Verana Indexer API |
+| `@verana/did-resolver` | DID resolution, document parsing, linked-VP dereferencing |
+| `@verana/trust-engine` | Trust evaluation logic per Verifiable Trust spec |
+| `@verana/cache` | TTL-based caching for objects and trust results |
+| `@verana/store` | PostgreSQL persistence layer (TypeORM) |
+| `@verana/graphql` | GraphQL schema, resolvers, data loaders |
+| `@verana/resolver-app` | Main application, pipeline orchestration |
+
+### 4.2 Directory Structure
+
+```
+verana-resolver/
+├── packages/
+│   ├── core/                    # Shared utilities
+│   │   ├── src/
+│   │   │   ├── config/
+│   │   │   ├── logger/
+│   │   │   ├── metrics/
+│   │   │   └── index.ts
+│   │   └── package.json
+│   │
+│   ├── indexer-client/          # Indexer API client
+│   │   ├── src/
+│   │   │   ├── client.ts
+│   │   │   ├── types.ts
+│   │   │   └── index.ts
+│   │   └── package.json
+│   │
+│   ├── did-resolver/            # DID resolution
+│   │   ├── src/
+│   │   │   ├── resolver.ts
+│   │   │   ├── document-parser.ts
+│   │   │   ├── linked-vp.ts
+│   │   │   ├── methods/
+│   │   │   │   ├── did-web.ts
+│   │   │   │   └── did-cheqd.ts
+│   │   │   └── index.ts
+│   │   └── package.json
+│   │
+│   ├── trust-engine/            # Trust evaluation
+│   │   ├── src/
+│   │   │   ├── evaluator.ts
+│   │   │   ├── rules/
+│   │   │   │   ├── verifiable-service.ts
+│   │   │   │   ├── credential-validation.ts
+│   │   │   │   └── permission-check.ts
+│   │   │   ├── types.ts
+│   │   │   └── index.ts
+│   │   └── package.json
+│   │
+│   ├── cache/                   # Caching layer
+│   │   ├── src/
+│   │   │   ├── object-cache.ts
+│   │   │   ├── trust-cache.ts
+│   │   │   ├── retry-queue.ts
+│   │   │   └── index.ts
+│   │   └── package.json
+│   │
+│   ├── store/                   # Database layer
+│   │   ├── src/
+│   │   │   ├── entities/
+│   │   │   │   ├── service.entity.ts
+│   │   │   │   ├── ecosystem.entity.ts
+│   │   │   │   ├── credential.entity.ts
+│   │   │   │   ├── permission.entity.ts
+│   │   │   │   ├── did-document.entity.ts
+│   │   │   │   └── sync-state.entity.ts
+│   │   │   ├── repositories/
+│   │   │   ├── migrations/
+│   │   │   └── index.ts
+│   │   └── package.json
+│   │
+│   ├── graphql/                 # GraphQL API
+│   │   ├── src/
+│   │   │   ├── schema/
+│   │   │   │   ├── types/
+│   │   │   │   ├── queries/
+│   │   │   │   └── schema.graphql
+│   │   │   ├── resolvers/
+│   │   │   ├── loaders/
+│   │   │   └── index.ts
+│   │   └── package.json
+│   │
+│   └── app/                     # Main application
+│       ├── src/
+│       │   ├── pipeline/
+│       │   │   ├── pass1.ts
+│       │   │   ├── pass2.ts
+│       │   │   └── index.ts
+│       │   ├── scheduler/
+│       │   ├── main.ts
+│       │   └── index.ts
+│       └── package.json
+│
+├── docker/
+│   ├── Dockerfile
+│   └── docker-compose.yml
+│
+├── pnpm-workspace.yaml
+├── turbo.json
+└── package.json
+```
+
+---
+
+## 5. Data Flow
+
+### 5.1 Block Ingestion Flow
+
+```mermaid
+sequenceDiagram
+    participant Scheduler
+    participant SyncManager
+    participant Indexer
+    participant Pass1
+    participant Pass2
+    participant Cache
+    participant Store
+
+    loop Every POLL_INTERVAL
+        Scheduler->>SyncManager: triggerSync()
+        SyncManager->>Store: getLastProcessedBlock()
+        Store-->>SyncManager: lastBlock
+        SyncManager->>Indexer: getBlockHeight()
+        Indexer-->>SyncManager: currentHeight
+        
+        alt currentHeight > lastBlock
+            loop For each block
+                SyncManager->>Indexer: listChanges(blockHeight)
+                Indexer-->>SyncManager: changes[]
+                
+                SyncManager->>Pass1: process(changes)
+                Pass1->>Cache: invalidate(changedDIDs)
+                Pass1->>Pass1: dereferenceDIDs()
+                Pass1->>Pass1: dereferenceLinkedVPs()
+                Pass1->>Cache: store(objects)
+                Pass1-->>SyncManager: pass1Result
+                
+                SyncManager->>Pass2: evaluate(affectedDIDs)
+                Pass2->>Cache: getTrustResult(did)
+                Pass2->>Pass2: evaluateTrust()
+                Pass2->>Store: updateIndex(trustResults)
+                Pass2-->>SyncManager: pass2Result
+                
+                SyncManager->>Store: setLastProcessedBlock(blockHeight)
+            end
+        end
+    end
+```
+
+### 5.2 Trust Evaluation Flow
+
+```mermaid
+flowchart TD
+    START([Evaluate DID]) --> CHECK_CACHE{Trust Cache<br/>Valid?}
+    CHECK_CACHE -->|Yes| RETURN_CACHED[Return Cached Result]
+    CHECK_CACHE -->|No| RESOLVE_DID[Resolve DID Document]
+    
+    RESOLVE_DID --> PARSE_DOC[Parse DID Document]
+    PARSE_DOC --> FIND_VP[Find linked-vp Services]
+    
+    FIND_VP --> DEREF_VP[Dereference VPs]
+    DEREF_VP --> EXTRACT_VC[Extract VCs from VPs]
+    
+    EXTRACT_VC --> VALIDATE_VC{Validate Each VC}
+    
+    VALIDATE_VC --> CHECK_SCHEMA[Verify Schema Reference]
+    CHECK_SCHEMA --> CHECK_SIG[Verify Signatures]
+    CHECK_SIG --> CHECK_EXP[Check Expiration]
+    CHECK_EXP --> CHECK_ISSUER[Validate Issuer Permission]
+    
+    CHECK_ISSUER --> ISSUER_PERM{Issuer Has<br/>Valid Permission?}
+    ISSUER_PERM -->|Yes| VC_VALID[Mark VC Valid]
+    ISSUER_PERM -->|No| VC_INVALID[Mark VC Invalid]
+    
+    VC_VALID --> COLLECT[Collect Results]
+    VC_INVALID --> COLLECT
+    
+    COLLECT --> CHECK_ECS{Has Required<br/>ECS Credentials?}
+    CHECK_ECS -->|Yes| TRUSTED[Status: TRUSTED]
+    CHECK_ECS -->|No| UNTRUSTED[Status: UNTRUSTED]
+    
+    TRUSTED --> CACHE_RESULT[Cache Trust Result]
+    UNTRUSTED --> CACHE_RESULT
+    
+    CACHE_RESULT --> RETURN([Return TrustResolutionResult])
+```
+
+---
+
+## 6. Technology Stack
+
+### 6.1 Runtime & Language
+
+| Technology | Purpose | Version |
+|------------|---------|---------|
+| Node.js | Runtime | 20 LTS |
+| TypeScript | Language | 5.x |
+| pnpm | Package manager | 8.x |
+| Turborepo | Monorepo build | 2.x |
+
+### 6.2 Core Dependencies
+
+| Package | Purpose |
+|---------|---------|
+| `@apollo/server` | GraphQL server |
+| `graphql` | GraphQL core |
+| `typeorm` | Database ORM |
+| `pg` | PostgreSQL driver |
+| `redis` | Cache backend (optional) |
+| `axios` | HTTP client |
+| `zod` | Schema validation |
+| `pino` | Structured logging |
+| `@did-core/data-model` | DID data model types |
+| `did-resolver` | Universal DID resolver |
+| `@veramo/core` | VC/VP handling (optional) |
+| `multiformats` | CID/multibase handling |
+| `jose` | JWT/JWS verification |
+
+### 6.3 Development Dependencies
+
+| Package | Purpose |
+|---------|---------|
+| `vitest` | Testing framework |
+| `tsx` | TypeScript execution |
+| `eslint` | Linting |
+| `prettier` | Code formatting |
+| `typedoc` | Documentation generation |
+
+### 6.4 Infrastructure
+
+| Component | Technology | Purpose |
+|-----------|------------|---------|
+| Database | PostgreSQL 15+ | Local projection storage |
+| Cache | Redis 7+ (optional) | Distributed caching |
+| Container | Docker | Deployment |
+| Orchestration | Docker Compose / K8s | Multi-container deployment |
+
+---
+
+## 7. Database Schema
+
+### 7.1 Entity Relationship Diagram
+
+```mermaid
+erDiagram
+    SyncState {
+        string id PK
+        bigint lastProcessedBlock
+        timestamp updatedAt
+    }
+
+    Service {
+        string did PK
+        string displayName
+        string description
+        jsonb metadata
+        string trustStatus
+        boolean production
+        timestamp trustEvaluatedAt
+        timestamp trustExpiresAt
+        bigint blockHeight
+        timestamp createdAt
+        timestamp updatedAt
+    }
+
+    Ecosystem {
+        string did PK
+        bigint trustRegistryId
+        string name
+        string description
+        jsonb governanceFramework
+        decimal totalDeposit
+        bigint blockHeight
+        timestamp createdAt
+        timestamp updatedAt
+    }
+
+    Credential {
+        string id PK
+        string subjectDid FK
+        string issuerDid FK
+        string schemaId
+        string type
+        jsonb claims
+        string status
+        timestamp issuedAt
+        timestamp expiresAt
+        bigint issuanceBlockHeight
+        timestamp createdAt
+    }
+
+    Permission {
+        bigint id PK
+        bigint schemaId
+        string did
+        string type
+        string authorityAddress
+        bigint validatorPermId
+        timestamp effectiveFrom
+        timestamp effectiveUntil
+        string status
+        bigint blockHeight
+        timestamp createdAt
+        timestamp updatedAt
+    }
+
+    CredentialSchema {
+        bigint id PK
+        bigint trustRegistryId FK
+        string name
+        jsonb jsonSchema
+        string issuerMode
+        string verifierMode
+        bigint blockHeight
+        timestamp createdAt
+        timestamp updatedAt
+    }
+
+    DIDDocument {
+        string did PK
+        jsonb document
+        timestamp cachedAt
+        timestamp expiresAt
+    }
+
+    CachedObject {
+        string uri PK
+        string type
+        jsonb content
+        string digestSri
+        timestamp cachedAt
+        timestamp expiresAt
+    }
+
+    RetryQueue {
+        string id PK
+        string resourceType
+        string resourceId
+        string errorType
+        string errorMessage
+        timestamp firstFailureAt
+        timestamp lastRetryAt
+        int retryCount
+    }
+
+    Service ||--o{ Credential : "has"
+    Service }o--o{ Ecosystem : "participates_in"
+    Ecosystem ||--o{ CredentialSchema : "defines"
+    CredentialSchema ||--o{ Permission : "has"
+    Credential }o--|| Permission : "issued_under"
+```
+
+### 7.2 Core Tables
+
+```sql
+-- Sync state tracking
+CREATE TABLE sync_state (
+    id VARCHAR(50) PRIMARY KEY DEFAULT 'main',
+    last_processed_block BIGINT NOT NULL DEFAULT 0,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Verified services index
+CREATE TABLE services (
+    did VARCHAR(500) PRIMARY KEY,
+    display_name VARCHAR(255),
+    description TEXT,
+    metadata JSONB,
+    location_country VARCHAR(100),
+    location_region VARCHAR(100),
+    location_city VARCHAR(100),
+    trust_status VARCHAR(50) NOT NULL, -- TRUSTED, UNTRUSTED, PARTIAL
+    production BOOLEAN DEFAULT FALSE,
+    trust_evaluated_at TIMESTAMP WITH TIME ZONE,
+    trust_expires_at TIMESTAMP WITH TIME ZONE,
+    valid_credentials JSONB, -- array of credential summaries
+    ignored_credentials JSONB,
+    failed_credentials JSONB,
+    block_height BIGINT NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Full-text search index
+CREATE INDEX idx_services_search ON services 
+    USING GIN (to_tsvector('english', 
+        coalesce(display_name, '') || ' ' || 
+        coalesce(description, '') || ' ' ||
+        coalesce(metadata::text, '')
+    ));
+
+CREATE INDEX idx_services_location ON services (location_country, location_region, location_city);
+CREATE INDEX idx_services_trust_status ON services (trust_status);
+
+-- Ecosystems
+CREATE TABLE ecosystems (
+    did VARCHAR(500) PRIMARY KEY,
+    trust_registry_id BIGINT UNIQUE,
+    name VARCHAR(255),
+    description TEXT,
+    governance_framework JSONB,
+    total_deposit DECIMAL(30, 18),
+    block_height BIGINT NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Credentials (flattened for querying)
+CREATE TABLE credentials (
+    id VARCHAR(500) PRIMARY KEY,
+    subject_did VARCHAR(500) NOT NULL REFERENCES services(did) ON DELETE CASCADE,
+    issuer_did VARCHAR(500) NOT NULL,
+    issuer_perm_id BIGINT,
+    schema_id BIGINT,
+    schema_name VARCHAR(255),
+    credential_type VARCHAR(255),
+    claims JSONB,
+    status VARCHAR(50), -- VALID, EXPIRED, REVOKED, INVALID
+    issued_at TIMESTAMP WITH TIME ZONE,
+    expires_at TIMESTAMP WITH TIME ZONE,
+    issuance_block_height BIGINT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE INDEX idx_credentials_subject ON credentials (subject_did);
+CREATE INDEX idx_credentials_issuer ON credentials (issuer_did);
+CREATE INDEX idx_credentials_schema ON credentials (schema_id);
+CREATE INDEX idx_credentials_claims ON credentials USING GIN (claims);
+
+-- Service-Ecosystem relationships
+CREATE TABLE service_ecosystems (
+    service_did VARCHAR(500) REFERENCES services(did) ON DELETE CASCADE,
+    ecosystem_did VARCHAR(500) REFERENCES ecosystems(did) ON DELETE CASCADE,
+    PRIMARY KEY (service_did, ecosystem_did)
+);
+
+-- Permissions cache
+CREATE TABLE permissions (
+    id BIGINT PRIMARY KEY,
+    schema_id BIGINT NOT NULL,
+    did VARCHAR(500),
+    permission_type VARCHAR(50), -- ECOSYSTEM, ISSUER_GRANTOR, VERIFIER_GRANTOR, ISSUER, VERIFIER, HOLDER
+    authority_address VARCHAR(100),
+    validator_perm_id BIGINT,
+    effective_from TIMESTAMP WITH TIME ZONE,
+    effective_until TIMESTAMP WITH TIME ZONE,
+    status VARCHAR(50), -- ACTIVE, REVOKED, SLASHED, EXPIRED
+    block_height BIGINT NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE INDEX idx_permissions_did ON permissions (did);
+CREATE INDEX idx_permissions_schema ON permissions (schema_id);
+CREATE INDEX idx_permissions_type ON permissions (permission_type);
+
+-- Credential schemas
+CREATE TABLE credential_schemas (
+    id BIGINT PRIMARY KEY,
+    trust_registry_id BIGINT NOT NULL,
+    name VARCHAR(255),
+    json_schema JSONB,
+    issuer_mode VARCHAR(50),
+    verifier_mode VARCHAR(50),
+    block_height BIGINT NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- DID document cache
+CREATE TABLE did_documents (
+    did VARCHAR(500) PRIMARY KEY,
+    document JSONB NOT NULL,
+    cached_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    expires_at TIMESTAMP WITH TIME ZONE NOT NULL
+);
+
+-- Generic object cache
+CREATE TABLE cached_objects (
+    uri VARCHAR(2000) PRIMARY KEY,
+    object_type VARCHAR(100), -- VP, VC, JSON_SCHEMA, GOVERNANCE_DOC
+    content JSONB NOT NULL,
+    digest_sri VARCHAR(255),
+    cached_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    expires_at TIMESTAMP WITH TIME ZONE NOT NULL
+);
+
+-- Retry queue
+CREATE TABLE retry_queue (
+    id VARCHAR(500) PRIMARY KEY,
+    resource_type VARCHAR(100) NOT NULL,
+    resource_id VARCHAR(500) NOT NULL,
+    error_type VARCHAR(100),
+    error_message TEXT,
+    first_failure_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    last_retry_at TIMESTAMP WITH TIME ZONE,
+    retry_count INT DEFAULT 0,
+    next_retry_at TIMESTAMP WITH TIME ZONE
+);
+
+CREATE INDEX idx_retry_queue_next ON retry_queue (next_retry_at);
+
+-- DID usage reverse index
+CREATE TABLE did_usage (
+    did VARCHAR(500) NOT NULL,
+    role VARCHAR(50) NOT NULL, -- SERVICE, ISSUER, VERIFIER, ECOSYSTEM, GRANTOR
+    context_id VARCHAR(500), -- e.g., schema_id, ecosystem_did
+    PRIMARY KEY (did, role, context_id)
+);
+
+CREATE INDEX idx_did_usage_did ON did_usage (did);
+```
+
+---
+
+## 8. GraphQL Schema Design
+
+### 8.1 Core Types
+
+```graphql
+# Pagination
+type PageInfo {
+  hasNextPage: Boolean!
+  hasPreviousPage: Boolean!
+  startCursor: String
+  endCursor: String
+}
+
+# Trust status enum
+enum TrustStatus {
+  TRUSTED
+  UNTRUSTED
+  PARTIAL
+}
+
+# Permission type enum
+enum PermissionType {
+  ECOSYSTEM
+  ISSUER_GRANTOR
+  VERIFIER_GRANTOR
+  ISSUER
+  VERIFIER
+  HOLDER
+}
+
+# Service (Verifiable Service)
+type Service {
+  did: ID!
+  displayName: String
+  description: String
+  metadata: JSON
+  location: Location
+  trustStatus: TrustStatus!
+  production: Boolean!
+  trustEvaluatedAt: DateTime
+  validCredentials: [Credential!]!
+  ignoredCredentials: [Credential!]!
+  ecosystems: [Ecosystem!]!
+  roles: [DIDRole!]!
+}
+
+type ServiceEdge {
+  cursor: String!
+  node: Service!
+}
+
+type ServiceConnection {
+  edges: [ServiceEdge!]!
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+# Location
+type Location {
+  country: String
+  region: String
+  city: String
+  coordinates: Coordinates
+}
+
+type Coordinates {
+  latitude: Float
+  longitude: Float
+}
+
+# Ecosystem
+type Ecosystem {
+  did: ID!
+  trustRegistryId: ID!
+  name: String
+  description: String
+  governanceFramework: GovernanceFramework
+  totalDeposit: String
+  schemas: [CredentialSchema!]!
+  participants: ParticipantConnection!
+}
+
+type EcosystemEdge {
+  cursor: String!
+  node: Ecosystem!
+}
+
+type EcosystemConnection {
+  edges: [EcosystemEdge!]!
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+# Governance Framework
+type GovernanceFramework {
+  version: String
+  url: String
+  digest: String
+  effectiveFrom: DateTime
+}
+
+# Credential Schema
+type CredentialSchema {
+  id: ID!
+  name: String!
+  jsonSchema: JSON!
+  issuerMode: String!
+  verifierMode: String!
+  ecosystem: Ecosystem!
+  issuers: PermissionConnection!
+  verifiers: PermissionConnection!
+}
+
+# Credential
+type Credential {
+  id: ID!
+  type: String!
+  issuer: CredentialIssuer!
+  subject: Service!
+  schema: CredentialSchema
+  claims: JSON!
+  status: String!
+  issuedAt: DateTime
+  expiresAt: DateTime
+}
+
+type CredentialIssuer {
+  did: String!
+  permission: Permission
+}
+
+type CredentialEdge {
+  cursor: String!
+  node: Credential!
+}
+
+type CredentialConnection {
+  edges: [CredentialEdge!]!
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+# Permission
+type Permission {
+  id: ID!
+  did: String!
+  type: PermissionType!
+  schema: CredentialSchema!
+  effectiveFrom: DateTime
+  effectiveUntil: DateTime
+  status: String!
+  validator: Permission
+  issuedCount: Int
+  verifiedCount: Int
+}
+
+type PermissionEdge {
+  cursor: String!
+  node: Permission!
+}
+
+type PermissionConnection {
+  edges: [PermissionEdge!]!
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+# Participant (issuer/verifier in ecosystem)
+type Participant {
+  did: String!
+  displayName: String
+  permissions: [Permission!]!
+  issuedCount: Int
+  verifiedCount: Int
+}
+
+type ParticipantEdge {
+  cursor: String!
+  node: Participant!
+}
+
+type ParticipantConnection {
+  edges: [ParticipantEdge!]!
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+# DID Usage
+type DIDRole {
+  role: String!
+  context: String
+}
+
+type DIDUsage {
+  did: ID!
+  roles: [DIDRole!]!
+  asService: Service
+  asEcosystem: Ecosystem
+  permissions: [Permission!]!
+}
+
+# Sync info
+type SyncInfo {
+  lastProcessedBlock: Int!
+  indexerBlock: Int!
+  syncedAt: DateTime!
+}
+```
+
+### 8.2 Queries
+
+```graphql
+type Query {
+  # Services
+  services(
+    filter: ServiceFilter
+    orderBy: ServiceOrderBy
+    first: Int
+    after: String
+    last: Int
+    before: String
+  ): ServiceConnection!
+
+  service(did: ID!): Service
+
+  # Ecosystems
+  ecosystems(
+    filter: EcosystemFilter
+    orderBy: EcosystemOrderBy
+    first: Int
+    after: String
+  ): EcosystemConnection!
+
+  ecosystem(did: ID!): Ecosystem
+  ecosystemByRegistryId(trustRegistryId: ID!): Ecosystem
+
+  # Credentials
+  credentials(
+    filter: CredentialFilter
+    first: Int
+    after: String
+  ): CredentialConnection!
+
+  credential(id: ID!): Credential
+
+  # DID usage
+  didUsage(did: ID!): DIDUsage
+
+  # Search
+  search(
+    text: String!
+    types: [SearchType!]
+    first: Int
+    after: String
+  ): SearchResultConnection!
+
+  # Sync status
+  syncInfo: SyncInfo!
+}
+
+# Filters
+input ServiceFilter {
+  did: ID
+  trustStatus: TrustStatus
+  production: Boolean
+  ecosystemDid: ID
+  schemaId: ID
+  issuerDid: ID
+  location: LocationFilter
+  claims: ClaimFilter
+}
+
+input LocationFilter {
+  country: String
+  region: String
+  city: String
+}
+
+input ClaimFilter {
+  path: String!
+  value: String!
+  operator: ClaimOperator
+}
+
+enum ClaimOperator {
+  EQUALS
+  CONTAINS
+  STARTS_WITH
+}
+
+input EcosystemFilter {
+  did: ID
+  name: String
+  hasSchema: ID
+}
+
+input CredentialFilter {
+  subjectDid: ID
+  issuerDid: ID
+  schemaId: ID
+  type: String
+  status: String
+}
+
+# Order by
+input ServiceOrderBy {
+  field: ServiceOrderField!
+  direction: OrderDirection!
+}
+
+enum ServiceOrderField {
+  DISPLAY_NAME
+  TRUST_EVALUATED_AT
+  CREATED_AT
+}
+
+enum OrderDirection {
+  ASC
+  DESC
+}
+
+# Search
+enum SearchType {
+  SERVICE
+  ECOSYSTEM
+  SCHEMA
+  CREDENTIAL
+}
+
+union SearchResult = Service | Ecosystem | CredentialSchema | Credential
+
+type SearchResultEdge {
+  cursor: String!
+  node: SearchResult!
+  score: Float!
+}
+
+type SearchResultConnection {
+  edges: [SearchResultEdge!]!
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+```
+
+---
+
+## 9. Core Interfaces & Types
+
+### 9.1 Configuration
+
+```typescript
+// packages/core/src/config/types.ts
+
+export interface ResolverConfig {
+  // Indexer
+  indexer: {
+    baseUrl: string;
+    timeout: number;
+  };
+
+  // Polling
+  pollInterval: number; // seconds
+  
+  // TTLs
+  cacheTtl: number; // seconds - for dereferenced objects
+  trustTtl: number; // seconds - for trust evaluations
+  
+  // Retry
+  retryDays: number; // POLL_OBJECT_CACHING_RETRY_DAYS
+  
+  // Whitelists
+  trustedVprs: TrustedVpr[];
+  
+  // Database
+  database: {
+    host: string;
+    port: number;
+    username: string;
+    password: string;
+    database: string;
+  };
+  
+  // Redis (optional)
+  redis?: {
+    host: string;
+    port: number;
+    password?: string;
+  };
+  
+  // GraphQL
+  graphql: {
+    port: number;
+    playground: boolean;
+  };
+}
+
+export interface TrustedVpr {
+  id: string;
+  indexerUrl: string;
+  ecosystems: TrustedEcosystem[];
+}
+
+export interface TrustedEcosystem {
+  did: string;
+  ecsSchemaIds: string[]; // Essential Credential Schema IDs
+}
+```
+
+### 9.2 Trust Engine Types
+
+```typescript
+// packages/trust-engine/src/types.ts
+
+export type TrustStatus = 'TRUSTED' | 'UNTRUSTED' | 'PARTIAL';
+
+export interface TrustResolutionResult {
+  did: string;
+  trustStatus: TrustStatus;
+  production: boolean;
+  validCredentials: ValidatedCredential[];
+  ignoredCredentials: ValidatedCredential[];
+  failedCredentials: FailedCredential[];
+  ecosystems: string[]; // ecosystem DIDs
+  evaluatedAt: Date;
+  expiresAt: Date;
+}
+
+export interface ValidatedCredential {
+  id: string;
+  type: string;
+  issuerDid: string;
+  issuerPermissionId: number;
+  schemaId: number;
+  claims: Record<string, unknown>;
+  issuedAt?: Date;
+  expiresAt?: Date;
+  issuanceBlockHeight?: number;
+}
+
+export interface FailedCredential {
+  id?: string;
+  uri?: string;
+  error: string;
+  errorCode: string;
+}
+
+export interface PermissionValidationResult {
+  valid: boolean;
+  permissionId?: number;
+  permissionType?: string;
+  error?: string;
+}
+```
+
+### 9.3 Indexer Client Types
+
+```typescript
+// packages/indexer-client/src/types.ts
+
+export interface IndexerClient {
+  getBlockHeight(): Promise<number>;
+  
+  listChanges(blockHeight: number): Promise<EntityChange[]>;
+  
+  getTrustRegistry(id: number, atBlockHeight?: number): Promise<TrustRegistry>;
+  
+  getCredentialSchema(id: number, atBlockHeight?: number): Promise<CredentialSchema>;
+  
+  getPermission(id: number, atBlockHeight?: number): Promise<Permission>;
+  
+  listPermissions(filter: PermissionFilter, atBlockHeight?: number): Promise<Permission[]>;
+  
+  getDIDDirectory(atBlockHeight?: number): Promise<DIDDirectoryEntry[]>;
+}
+
+export interface EntityChange {
+  entityType: 'TrustRegistry' | 'CredentialSchema' | 'Permission' | 'DIDDirectory';
+  entityId: string | number;
+  changeType: 'CREATE' | 'UPDATE' | 'DELETE';
+  blockHeight: number;
+}
+
+export interface TrustRegistry {
+  id: number;
+  did: string;
+  name: string;
+  governanceFramework: GovernanceFrameworkVersion;
+  authority: string;
+  created: string;
+  modified: string;
+  archived?: string;
+}
+
+export interface Permission {
+  id: number;
+  schemaId: number;
+  did: string;
+  type: string;
+  authority: string;
+  validatorPermId?: number;
+  effectiveFrom?: string;
+  effectiveUntil?: string;
+  revoked?: string;
+  slashed?: string;
+  deposit: string;
+}
+```
+
+---
+
+## 10. Implementation Phases
+
+### Phase 1: Foundation (Weeks 1-2)
+
+| Task | Description |
+|------|-------------|
+| Project setup | Monorepo structure, TypeScript config, CI/CD |
+| Core module | Configuration, logging, metrics |
+| Database schema | PostgreSQL schema, migrations, TypeORM entities |
+| Indexer client | HTTP client for Verana Indexer API |
+
+### Phase 2: Ingestion Pipeline (Weeks 3-4)
+
+| Task | Description |
+|------|-------------|
+| Block sync manager | Initial sync + incremental sync logic |
+| Pass1 implementation | Caching, DID resolution, VP dereferencing |
+| Retry manager | Failure tracking and retry scheduling |
+| Cache layer | Object cache with TTL, Redis integration |
+
+### Phase 3: Trust Engine (Weeks 5-6)
+
+| Task | Description |
+|------|-------------|
+| DID resolver | Multi-method DID resolution (did:web, did:cheqd) |
+| VP/VC parser | Linked-VP extraction, VC validation |
+| Permission validator | Issuer permission checking at block height |
+| Trust evaluator | Full trust resolution per VT spec |
+
+### Phase 4: GraphQL API (Weeks 7-8)
+
+| Task | Description |
+|------|-------------|
+| Schema definition | Types, queries, filters |
+| Resolvers | Query resolvers with DataLoader batching |
+| Search | Full-text search implementation |
+| Pagination | Cursor-based pagination |
+
+### Phase 5: Testing & Hardening (Weeks 9-10)
+
+| Task | Description |
+|------|-------------|
+| Unit tests | Core logic coverage |
+| Integration tests | End-to-end pipeline tests |
+| Load testing | Performance benchmarks |
+| Documentation | API docs, deployment guide |
+
+---
+
+## 11. Deployment Architecture
+
+```mermaid
+flowchart TB
+    subgraph K8s["Kubernetes Cluster"]
+        subgraph Resolver["Resolver Deployment"]
+            R1[resolver-1]
+            R2[resolver-2]
+        end
+        
+        subgraph Data["Data Layer"]
+            PG[(PostgreSQL<br/>Primary)]
+            PG_R[(PostgreSQL<br/>Replica)]
+            REDIS[(Redis<br/>Cache)]
+        end
+        
+        subgraph Ingress["Ingress"]
+            LB[Load Balancer]
+        end
+    end
+    
+    subgraph External["External"]
+        IDX[Verana Indexer]
+        DID[DID Networks]
+    end
+    
+    LB --> R1
+    LB --> R2
+    R1 --> PG
+    R2 --> PG_R
+    R1 --> REDIS
+    R2 --> REDIS
+    R1 --> IDX
+    R2 --> IDX
+    R1 --> DID
+    R2 --> DID
+    PG --> PG_R
+```
+
+### Docker Compose (Development)
+
+```yaml
+# docker/docker-compose.yml
+version: '3.8'
+
+services:
+  resolver:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    ports:
+      - "4000:4000"
+    environment:
+      - DATABASE_URL=postgresql://verana:verana@postgres:5432/resolver
+      - REDIS_URL=redis://redis:6379
+      - INDEXER_URL=https://idx.testnet.verana.network
+      - POLL_INTERVAL=5
+      - CACHE_TTL=3600
+      - TRUST_TTL=300
+    depends_on:
+      - postgres
+      - redis
+
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      - POSTGRES_USER=verana
+      - POSTGRES_PASSWORD=verana
+      - POSTGRES_DB=resolver
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+volumes:
+  postgres_data:
+```
+
+---
+
+## 12. Monitoring & Observability
+
+### Metrics (Prometheus)
+
+| Metric | Type | Description |
+|--------|------|-------------|
+| `resolver_blocks_processed_total` | Counter | Total blocks processed |
+| `resolver_last_processed_block` | Gauge | Current sync position |
+| `resolver_block_lag` | Gauge | Blocks behind indexer |
+| `resolver_pass1_duration_seconds` | Histogram | Pass1 processing time |
+| `resolver_pass2_duration_seconds` | Histogram | Pass2 processing time |
+| `resolver_dereference_errors_total` | Counter | Dereferencing failures |
+| `resolver_trust_evaluations_total` | Counter | Trust evaluations by status |
+| `resolver_cache_hits_total` | Counter | Cache hit rate |
+| `resolver_graphql_requests_total` | Counter | GraphQL queries |
+| `resolver_graphql_duration_seconds` | Histogram | Query latency |
+
+### Health Checks
+
+```typescript
+// GET /health
+interface HealthResponse {
+  status: 'healthy' | 'degraded' | 'unhealthy';
+  checks: {
+    database: 'ok' | 'error';
+    redis: 'ok' | 'error' | 'disabled';
+    indexer: 'ok' | 'error';
+    sync: {
+      lastProcessedBlock: number;
+      indexerBlock: number;
+      lag: number;
+      status: 'synced' | 'syncing' | 'stale';
+    };
+  };
+  uptime: number;
+  version: string;
+}
+```
+
+---
+
+## 13. Security Considerations
+
+| Concern | Mitigation |
+|---------|------------|
+| Cache poisoning | Validate digest_sri for all external documents |
+| DID spoofing | Verify DID document signatures per method spec |
+| Credential forgery | Verify all VC/VP cryptographic proofs |
+| SQL injection | Use parameterized queries (TypeORM) |
+| DoS via GraphQL | Query complexity limits, depth limiting |
+| Data integrity | Atomic block processing with transactions |
+
+---
+
+## 14. Open Questions
+
+1. **Redis requirement**: Should Redis be mandatory or optional (fallback to in-memory)?
+2. **DID methods**: Which DID methods to support initially? (`did:web`, `did:cheqd`, others?)
+3. **VC formats**: Support for both JWT-VC and JSON-LD VC?
+4. **Clustering**: Single-writer vs multi-writer for horizontal scaling?
+5. **Historical queries**: Support `asOfBlockHeight` in GraphQL from day one?
+
+---
+
+## 15. References
+
+- [Verana Trust Resolver Spec](./spec-simple.md)
+- [Verifiable Trust Specification](https://verana-labs.github.io/verifiable-trust-spec/)
+- [VPR Specification](https://verana-labs.github.io/verifiable-trust-vpr-spec/)
+- [Verana Indexer API](https://idx.testnet.verana.network/)
+- [DID Core Specification](https://www.w3.org/TR/did-core/)
+- [Verifiable Credentials Data Model](https://www.w3.org/TR/vc-data-model-2.0/)
+- [Linked VP Specification](https://identity.foundation/linked-vp/)
