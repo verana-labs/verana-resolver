@@ -185,7 +185,7 @@ verana-resolver/
 │   │   │   ├── linked-vp.ts
 │   │   │   ├── methods/
 │   │   │   │   ├── did-web.ts
-│   │   │   │   └── did-cheqd.ts
+│   │   │   │   └── did-webvh.ts
 │   │   │   └── index.ts
 │   │   └── package.json
 │   │
@@ -359,13 +359,13 @@ flowchart TD
 | `graphql` | GraphQL core |
 | `typeorm` | Database ORM |
 | `pg` | PostgreSQL driver |
-| `redis` | Cache backend (optional) |
+| `redis` | Cache backend (mandatory) |
 | `axios` | HTTP client |
 | `zod` | Schema validation |
 | `pino` | Structured logging |
 | `@did-core/data-model` | DID data model types |
 | `did-resolver` | Universal DID resolver |
-| `@veramo/core` | VC/VP handling (optional) |
+| `@veramo/core` | VC/VP handling (JWT-VC + JSON-LD VC) |
 | `multiformats` | CID/multibase handling |
 | `jose` | JWT/JWS verification |
 
@@ -384,7 +384,7 @@ flowchart TD
 | Component | Technology | Purpose |
 |-----------|------------|---------|
 | Database | PostgreSQL 15+ | Local projection storage |
-| Cache | Redis 7+ (optional) | Distributed caching |
+| Cache | Redis 7+ | Distributed caching (mandatory) |
 | Container | Docker | Deployment |
 | Orchestration | Docker Compose / K8s | Multi-container deployment |
 
@@ -887,9 +887,10 @@ type Query {
     after: String
     last: Int
     before: String
+    asOfBlockHeight: Int  # Historical query support
   ): ServiceConnection!
 
-  service(did: ID!): Service
+  service(did: ID!, asOfBlockHeight: Int): Service
 
   # Ecosystems
   ecosystems(
@@ -897,22 +898,24 @@ type Query {
     orderBy: EcosystemOrderBy
     first: Int
     after: String
+    asOfBlockHeight: Int  # Historical query support
   ): EcosystemConnection!
 
-  ecosystem(did: ID!): Ecosystem
-  ecosystemByRegistryId(trustRegistryId: ID!): Ecosystem
+  ecosystem(did: ID!, asOfBlockHeight: Int): Ecosystem
+  ecosystemByRegistryId(trustRegistryId: ID!, asOfBlockHeight: Int): Ecosystem
 
   # Credentials
   credentials(
     filter: CredentialFilter
     first: Int
     after: String
+    asOfBlockHeight: Int  # Historical query support
   ): CredentialConnection!
 
-  credential(id: ID!): Credential
+  credential(id: ID!, asOfBlockHeight: Int): Credential
 
   # DID usage
-  didUsage(did: ID!): DIDUsage
+  didUsage(did: ID!, asOfBlockHeight: Int): DIDUsage
 
   # Search
   search(
@@ -920,6 +923,7 @@ type Query {
     types: [SearchType!]
     first: Int
     after: String
+    asOfBlockHeight: Int  # Historical query support
   ): SearchResultConnection!
 
   # Sync status
@@ -1048,8 +1052,8 @@ export interface ResolverConfig {
     database: string;
   };
   
-  // Redis (optional)
-  redis?: {
+  // Redis (mandatory)
+  redis: {
     host: string;
     port: number;
     password?: string;
@@ -1227,12 +1231,15 @@ export interface Permission {
 
 ## 11. Deployment Architecture
 
+> **Single-Writer Architecture**: One resolver instance handles block ingestion and writes to the primary database. Multiple read-replica resolver instances serve GraphQL queries for horizontal scaling.
+
 ```mermaid
 flowchart TB
     subgraph K8s["Kubernetes Cluster"]
         subgraph Resolver["Resolver Deployment"]
-            R1[resolver-1]
-            R2[resolver-2]
+            R1[resolver-writer<br/>Block Ingestion]
+            R2[resolver-reader-1<br/>GraphQL Only]
+            R3[resolver-reader-2<br/>GraphQL Only]
         end
         
         subgraph Data["Data Layer"]
@@ -1251,16 +1258,16 @@ flowchart TB
         DID[DID Networks]
     end
     
-    LB --> R1
     LB --> R2
+    LB --> R3
     R1 --> PG
     R2 --> PG_R
+    R3 --> PG_R
     R1 --> REDIS
     R2 --> REDIS
+    R3 --> REDIS
     R1 --> IDX
-    R2 --> IDX
     R1 --> DID
-    R2 --> DID
     PG --> PG_R
 ```
 
@@ -1364,13 +1371,13 @@ interface HealthResponse {
 
 ---
 
-## 14. Open Questions
+## 14. Design Decisions
 
-1. **Redis requirement**: Should Redis be mandatory or optional (fallback to in-memory)?
-2. **DID methods**: Which DID methods to support initially? (`did:web`, `did:cheqd`, others?)
-3. **VC formats**: Support for both JWT-VC and JSON-LD VC?
-4. **Clustering**: Single-writer vs multi-writer for horizontal scaling?
-5. **Historical queries**: Support `asOfBlockHeight` in GraphQL from day one?
+1. **Redis requirement**: **Mandatory** — Redis is required for distributed caching.
+2. **DID methods**: Initial support for `did:web` and `did:webvh`.
+3. **VC formats**: Support **both** JWT-VC and JSON-LD VC formats.
+4. **Clustering**: **Single-writer architecture** — blocks are processed sequentially by a single writer instance. Read replicas handle GraphQL query load for horizontal scaling.
+5. **Historical queries**: `asOfBlockHeight` argument supported in GraphQL from day one.
 
 ---
 
