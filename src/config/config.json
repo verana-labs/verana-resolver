@@ -1,0 +1,36 @@
+{
+  "pollInterval": 10,
+  "cacheTtl": 3600,
+  "trustTtl": 1800,
+  "objectCachingRetryDays": 7,
+  "database": {
+    "host": "localhost",
+    "port": 5435,
+    "database": "verana_resolver",
+    "username": "verana_resolver_user",
+    "password": "verana_password",
+    "synchronize": true,
+    "logging": false
+  },
+  "api": {
+    "port": 4000
+  },
+  "verifiablePublicRegistries": [
+    {
+      "name": "vpr:verana:vna-mainnet-1",
+      "baseurls": [
+        "https://idx.testnet.verana.network"
+      ],
+      "version": "1",
+      "production": true
+    }
+  ],
+  "ecsEcosystems": [
+    {
+      "did": "did:example:verifiable-services-ecosystem",
+      "vpr": "vpr:verana:vna-mainnet-1"
+    }
+  ],
+  "logLevel": "debug"
+}
+
