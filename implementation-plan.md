@@ -28,7 +28,7 @@ This document outlines the implementation plan for the **Verana Trust Resolver C
 flowchart TB
     subgraph External["External Systems"]
         IDX[("Verana Indexer<br/>(REST API)")]
-        DID[("DID Resolvers<br/>(did:web, did:cheqd, etc.)")]
+        DID[("DID Resolvers<br/>(did:web, did:webvh, etc.)")]
         EXT[("External Resources<br/>(VCs, VPs, JSON Schemas)")]
     end
 
@@ -106,6 +106,8 @@ flowchart LR
         EVAL[TrustEvaluator]
         RULES[TrustRules]
         PERM[PermissionValidator]
+        VTJSC_V[VTJSCValidator]
+        FMT[FormatHandlers<br/>W3C / AnonCreds]
     end
 
     subgraph Cache["@verana/cache"]
@@ -195,7 +197,12 @@ verana-resolver/
 │   │   │   ├── rules/
 │   │   │   │   ├── verifiable-service.ts
 │   │   │   │   ├── credential-validation.ts
-│   │   │   │   └── permission-check.ts
+│   │   │   │   ├── vtjsc-validation.ts
+│   │   │   │   ├── permission-check.ts
+│   │   │   │   └── digest-computation.ts
+│   │   │   ├── formats/
+│   │   │   │   ├── w3c-vtc.ts
+│   │   │   │   └── anoncreds-vtc.ts
 │   │   │   ├── types.ts
 │   │   │   └── index.ts
 │   │   └── package.json
@@ -214,6 +221,7 @@ verana-resolver/
 │   │   │   │   ├── service.entity.ts
 │   │   │   │   ├── ecosystem.entity.ts
 │   │   │   │   ├── credential.entity.ts
+│   │   │   │   ├── credential-schema.entity.ts
 │   │   │   │   ├── permission.entity.ts
 │   │   │   │   ├── did-document.entity.ts
 │   │   │   │   └── sync-state.entity.ts
@@ -304,7 +312,10 @@ sequenceDiagram
 
 ```mermaid
 flowchart TD
-    START([Evaluate DID]) --> CHECK_CACHE{Trust Cache<br/>Valid?}
+    START([Evaluate DID]) --> VISITED{In visitedDids?}
+    VISITED -->|Yes| RETURN_VISITED([Return cached/in-progress result])
+    VISITED -->|No| ADD_VISITED[Add to visitedDids]
+    ADD_VISITED --> CHECK_CACHE{Trust Cache<br/>Valid?}
     CHECK_CACHE -->|Yes| RETURN_CACHED[Return Cached Result]
     CHECK_CACHE -->|No| RESOLVE_DID[Resolve DID Document]
     
@@ -314,25 +325,44 @@ flowchart TD
     FIND_VP --> DEREF_VP[Dereference VPs]
     DEREF_VP --> EXTRACT_VC[Extract VCs from VPs]
     
-    EXTRACT_VC --> VALIDATE_VC{Validate Each VC}
+    EXTRACT_VC --> DETECT_FMT{Detect Credential Format}
     
-    VALIDATE_VC --> CHECK_SCHEMA[Verify Schema Reference]
-    CHECK_SCHEMA --> CHECK_SIG[Verify Signatures]
-    CHECK_SIG --> CHECK_EXP[Check Expiration]
-    CHECK_EXP --> CHECK_ISSUER[Validate Issuer Permission]
+    DETECT_FMT -->|W3C VTC| W3C_SIG[Verify signature via issuer DID Doc]
+    DETECT_FMT -->|AnonCreds VTC| ANON_ZKP[Verify ZKP via Credential Definition]
     
-    CHECK_ISSUER --> ISSUER_PERM{Issuer Has<br/>Valid Permission?}
-    ISSUER_PERM -->|Yes| VC_VALID[Mark VC Valid]
-    ISSUER_PERM -->|No| VC_INVALID[Mark VC Invalid]
+    W3C_SIG --> W3C_VTJSC[Resolve VTJSC via credentialSchema.id]
+    ANON_ZKP --> ANON_VTJSC[Resolve VTJSC via CredDef.relatedJsonSchemaCredentialId]
+    
+    W3C_VTJSC --> VERIFY_VTJSC[Verify VTJSC signature<br/>+ confirm Ecosystem DID owns CredentialSchema<br/>+ confirm VTJSC is in Ecosystem DID Doc]
+    ANON_VTJSC --> VERIFY_VTJSC
+    
+    VERIFY_VTJSC --> CHECK_EXP[Check validUntil expiration]
+    
+    CHECK_EXP --> CHECK_PERM{Check Issuer Permission}
+    CHECK_PERM -->|W3C| W3C_PERM[Compute digestSRI → Get Digest<br/>→ effective issuance time<br/>→ verify ISSUER perm at that time]
+    CHECK_PERM -->|AnonCreds| ANON_PERM[Verify ISSUER perm currently active]
+    
+    W3C_PERM --> RECURSE_ISSUER[Recursively verify issuer DID as VS]
+    ANON_PERM --> RECURSE_ISSUER
+    RECURSE_ISSUER --> RECURSE_GRANTOR[Recursively verify grantor DIDs as VS]
+    RECURSE_GRANTOR --> RECURSE_ECO[Verify Ecosystem DID as VS<br/>recursion terminates here]
+    
+    RECURSE_ECO --> VC_RESULT{All checks pass?}
+    VC_RESULT -->|Yes| VC_VALID[Mark VC Valid → validCredentials]
+    VC_RESULT -->|Optional VC fails| VC_IGNORED[Mark VC Ignored → ignoredCredentials]
+    VC_RESULT -->|Required fails| VC_FAILED[Mark VC Failed → failedCredentials]
     
     VC_VALID --> COLLECT[Collect Results]
-    VC_INVALID --> COLLECT
+    VC_IGNORED --> COLLECT
+    VC_FAILED --> COLLECT
     
     COLLECT --> CHECK_ECS{Has Required<br/>ECS Credentials?}
-    CHECK_ECS -->|Yes| TRUSTED[Status: TRUSTED]
-    CHECK_ECS -->|No| UNTRUSTED[Status: UNTRUSTED]
+    CHECK_ECS -->|All required valid| TRUSTED[Status: TRUSTED]
+    CHECK_ECS -->|Some valid, missing ECS| PARTIAL[Status: PARTIAL]
+    CHECK_ECS -->|None valid| UNTRUSTED[Status: UNTRUSTED]
     
-    TRUSTED --> CACHE_RESULT[Cache Trust Result]
+    TRUSTED --> CACHE_RESULT[Cache Trust Result<br/>trustEvaluatedAt + TRUST_TTL]
+    PARTIAL --> CACHE_RESULT
     UNTRUSTED --> CACHE_RESULT
     
     CACHE_RESULT --> RETURN([Return TrustResolutionResult])
@@ -366,6 +396,8 @@ flowchart TD
 | `@did-core/data-model` | DID data model types |
 | `did-resolver` | Universal DID resolver |
 | `@veramo/core` | VC/VP handling (JWT-VC + JSON-LD VC) |
+| `@hyperledger/anoncreds-shared` | AnonCreds credential verification (ZKP) |
+| `canonicalize` | JCS canonicalization (RFC 8785) for digestSRI computation |
 | `multiformats` | CID/multibase handling |
 | `jose` | JWT/JWS verification |
 
@@ -432,13 +464,17 @@ erDiagram
         string id PK
         string subjectDid FK
         string issuerDid FK
-        string schemaId
+        string ecosystemDid FK
+        string vtjscId
+        bigint schemaId
         string type
+        string format
         jsonb claims
         string status
         timestamp issuedAt
-        timestamp expiresAt
-        bigint issuanceBlockHeight
+        timestamp validUntil
+        timestamp effectiveIssuanceTime
+        string digestSri
         timestamp createdAt
     }
 
@@ -462,6 +498,7 @@ erDiagram
         bigint trustRegistryId FK
         string name
         jsonb jsonSchema
+        string digestAlgorithm
         string issuerMode
         string verifierMode
         bigint blockHeight
@@ -501,6 +538,7 @@ erDiagram
     Ecosystem ||--o{ CredentialSchema : "defines"
     CredentialSchema ||--o{ Permission : "has"
     Credential }o--|| Permission : "issued_under"
+    Credential }o--o| Ecosystem : "belongs_to"
 ```
 
 ### 7.2 Core Tables
@@ -548,7 +586,7 @@ CREATE INDEX idx_services_trust_status ON services (trust_status);
 -- Ecosystems
 CREATE TABLE ecosystems (
     did VARCHAR(500) PRIMARY KEY,
-    trust_registry_id BIGINT UNIQUE,
+    trust_registry_id BIGINT NOT NULL UNIQUE,
     name VARCHAR(255),
     description TEXT,
     governance_framework JSONB,
@@ -566,18 +604,24 @@ CREATE TABLE credentials (
     issuer_perm_id BIGINT,
     schema_id BIGINT,
     schema_name VARCHAR(255),
+    credential_format VARCHAR(50) NOT NULL, -- W3C_VTC, ANONCREDS_VTC
     credential_type VARCHAR(255),
     claims JSONB,
     status VARCHAR(50), -- VALID, EXPIRED, REVOKED, INVALID
     issued_at TIMESTAMP WITH TIME ZONE,
-    expires_at TIMESTAMP WITH TIME ZONE,
-    issuance_block_height BIGINT,
+    valid_until TIMESTAMP WITH TIME ZONE,
+    effective_issuance_time TIMESTAMP WITH TIME ZONE, -- W3C VTC only, from Digest entry
+    digest_sri VARCHAR(255), -- W3C VTC only, computed via JCS + digest_algorithm
+    ecosystem_did VARCHAR(500) REFERENCES ecosystems(did),
+    vtjsc_id VARCHAR(500),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
 CREATE INDEX idx_credentials_subject ON credentials (subject_did);
 CREATE INDEX idx_credentials_issuer ON credentials (issuer_did);
 CREATE INDEX idx_credentials_schema ON credentials (schema_id);
+CREATE INDEX idx_credentials_format ON credentials (credential_format);
+CREATE INDEX idx_credentials_ecosystem ON credentials (ecosystem_did);
 CREATE INDEX idx_credentials_claims ON credentials USING GIN (claims);
 
 -- Service-Ecosystem relationships
@@ -613,6 +657,7 @@ CREATE TABLE credential_schemas (
     trust_registry_id BIGINT NOT NULL,
     name VARCHAR(255),
     json_schema JSONB,
+    digest_algorithm VARCHAR(50), -- algorithm for computing digestSRI (from VPR CredentialSchema)
     issuer_mode VARCHAR(50),
     verifier_mode VARCHAR(50),
     block_height BIGINT NOT NULL,
@@ -656,7 +701,7 @@ CREATE INDEX idx_retry_queue_next ON retry_queue (next_retry_at);
 -- DID usage reverse index
 CREATE TABLE did_usage (
     did VARCHAR(500) NOT NULL,
-    role VARCHAR(50) NOT NULL, -- SERVICE, ISSUER, VERIFIER, ECOSYSTEM, GRANTOR
+    role VARCHAR(50) NOT NULL, -- SERVICE, ISSUER, VERIFIER, ECOSYSTEM, GRANTOR, ISSUER_GRANTOR, VERIFIER_GRANTOR
     context_id VARCHAR(500), -- e.g., schema_id, ecosystem_did
     PRIMARY KEY (did, role, context_id)
 );
@@ -708,6 +753,7 @@ type Service {
   trustEvaluatedAt: DateTime
   validCredentials: [Credential!]!
   ignoredCredentials: [Credential!]!
+  failedCredentials: [FailedCredential!]!
   ecosystems: [Ecosystem!]!
   roles: [DIDRole!]!
 }
@@ -772,6 +818,7 @@ type CredentialSchema {
   id: ID!
   name: String!
   jsonSchema: JSON!
+  digestAlgorithm: String
   issuerMode: String!
   verifierMode: String!
   ecosystem: Ecosystem!
@@ -779,17 +826,26 @@ type CredentialSchema {
   verifiers: PermissionConnection!
 }
 
-# Credential
+# Credential format enum
+enum CredentialFormat {
+  W3C_VTC
+  ANONCREDS_VTC
+}
+
 type Credential {
   id: ID!
   type: String!
+  format: CredentialFormat!
   issuer: CredentialIssuer!
   subject: Service!
   schema: CredentialSchema
+  ecosystem: Ecosystem
   claims: JSON!
   status: String!
   issuedAt: DateTime
-  expiresAt: DateTime
+  validUntil: DateTime
+  effectiveIssuanceTime: DateTime
+  digestSri: String
 }
 
 type CredentialIssuer {
@@ -853,7 +909,15 @@ type ParticipantConnection {
   totalCount: Int!
 }
 
-# DID Usage
+# Failed credential (diagnostic)
+type FailedCredential {
+  id: String
+  uri: String
+  format: CredentialFormat
+  error: String!
+  errorCode: String!
+}
+
 type DIDRole {
   role: String!
   context: String
@@ -970,6 +1034,8 @@ input CredentialFilter {
   subjectDid: ID
   issuerDid: ID
   schemaId: ID
+  ecosystemDid: ID
+  format: CredentialFormat
   type: String
   status: String
 }
@@ -983,6 +1049,17 @@ input ServiceOrderBy {
 enum ServiceOrderField {
   DISPLAY_NAME
   TRUST_EVALUATED_AT
+  CREATED_AT
+}
+
+input EcosystemOrderBy {
+  field: EcosystemOrderField!
+  direction: OrderDirection!
+}
+
+enum EcosystemOrderField {
+  NAME
+  TOTAL_DEPOSIT
   CREATED_AT
 }
 
@@ -1066,12 +1143,16 @@ export interface ResolverConfig {
   };
 }
 
+// WL-VPR: recognized VPRs and access endpoints
 export interface TrustedVpr {
   id: string;
   indexerUrl: string;
+  rpcEndpoint?: string;
+  resolverEndpoint?: string;
   ecosystems: TrustedEcosystem[];
 }
 
+// WL-ECS: recognized ECS ecosystems per VPR
 export interface TrustedEcosystem {
   did: string;
   ecsSchemaIds: string[]; // Essential Credential Schema IDs
@@ -1084,6 +1165,8 @@ export interface TrustedEcosystem {
 // packages/trust-engine/src/types.ts
 
 export type TrustStatus = 'TRUSTED' | 'UNTRUSTED' | 'PARTIAL';
+
+export type CredentialFormat = 'W3C_VTC' | 'ANONCREDS_VTC';
 
 export interface TrustResolutionResult {
   did: string;
@@ -1100,18 +1183,24 @@ export interface TrustResolutionResult {
 export interface ValidatedCredential {
   id: string;
   type: string;
+  format: CredentialFormat;
   issuerDid: string;
   issuerPermissionId: number;
   schemaId: number;
+  ecosystemDid: string; // Ecosystem DID that owns the CredentialSchema
+  vtjscId: string; // ID of the authoritative VTJSC from Ecosystem DID Doc
   claims: Record<string, unknown>;
   issuedAt?: Date;
-  expiresAt?: Date;
-  issuanceBlockHeight?: number;
+  validUntil?: Date;
+  // W3C VTC only: effective issuance time from Digest entry
+  effectiveIssuanceTime?: Date;
+  digestSri?: string;
 }
 
 export interface FailedCredential {
   id?: string;
   uri?: string;
+  format?: CredentialFormat;
   error: string;
   errorCode: string;
 }
@@ -1120,6 +1209,18 @@ export interface PermissionValidationResult {
   valid: boolean;
   permissionId?: number;
   permissionType?: string;
+  // For recursive VS verification of the permission holder
+  holderIsVerifiableService: boolean;
+  error?: string;
+}
+
+export interface VTJSCValidationResult {
+  valid: boolean;
+  vtjscId: string;
+  ecosystemDid: string;
+  credentialSchemaId: number;
+  // Confirms VTJSC is presented in Ecosystem DID's DID Document
+  presentedInEcosystemDidDoc: boolean;
   error?: string;
 }
 ```
@@ -1143,6 +1244,17 @@ export interface IndexerClient {
   listPermissions(filter: PermissionFilter, atBlockHeight?: number): Promise<Permission[]>;
   
   getDIDDirectory(atBlockHeight?: number): Promise<DIDDirectoryEntry[]>;
+  
+  // Digest module — for W3C VTC effective issuance time determination
+  getDigest(digestSri: string, schemaId: number): Promise<DigestEntry | null>;
+}
+
+export interface DigestEntry {
+  id: number;
+  schemaId: number;
+  digestSri: string;
+  creator: string;
+  created: string; // ISO timestamp — this is the effective issuance time
 }
 
 export interface EntityChange {
@@ -1167,14 +1279,49 @@ export interface Permission {
   id: number;
   schemaId: number;
   did: string;
-  type: string;
+  type: string; // ECOSYSTEM, ISSUER_GRANTOR, VERIFIER_GRANTOR, ISSUER, VERIFIER, HOLDER
   authority: string;
   validatorPermId?: number;
   effectiveFrom?: string;
   effectiveUntil?: string;
+  status: string; // ACTIVE, REVOKED, SLASHED, EXPIRED
   revoked?: string;
   slashed?: string;
   deposit: string;
+}
+
+export interface CredentialSchema {
+  id: number;
+  trustRegistryId: number;
+  name: string;
+  jsonSchema: Record<string, unknown>;
+  digestAlgorithm: string;
+  issuerMode: string;
+  verifierMode: string;
+  created: string;
+  modified: string;
+}
+
+export interface GovernanceFrameworkVersion {
+  id: number;
+  trustRegistryId: number;
+  version: string;
+  url: string;
+  digest: string;
+  effectiveFrom: string;
+}
+
+export interface DIDDirectoryEntry {
+  did: string;
+  blockHeight: number;
+  changeType: 'ADD' | 'REMOVE';
+}
+
+export interface PermissionFilter {
+  schemaId?: number;
+  did?: string;
+  type?: string;
+  status?: string;
 }
 ```
 
@@ -1200,16 +1347,19 @@ export interface Permission {
 | Retry manager | Failure tracking and retry scheduling |
 | Cache layer | Object cache with TTL, Redis integration |
 
-### Phase 3: Trust Engine (Weeks 5-6)
+### Phase 3: Trust Engine (Weeks 5-7)
 
 | Task | Description |
 |------|-------------|
-| DID resolver | Multi-method DID resolution (did:web, did:cheqd) |
-| VP/VC parser | Linked-VP extraction, VC validation |
-| Permission validator | Issuer permission checking at block height |
-| Trust evaluator | Full trust resolution per VT spec |
+| DID resolver | Multi-method DID resolution (did:web, did:webvh) |
+| W3C VTC handler | Signature verification, JCS canonicalization, digestSRI computation, Digest query for effective issuance time |
+| AnonCreds VTC handler | ZKP verification via Credential Definition, VTJSC resolution via `relatedJsonSchemaCredentialId` |
+| VTJSC validator | Verify VTJSC signature, confirm Ecosystem DID ownership, confirm VTJSC is in Ecosystem DID Document |
+| Permission validator | Issuer/Verifier/Grantor permission checking at block height (W3C) or current time (AnonCreds) |
+| Recursive VS verifier | Verify all DIDs in trust chain (issuer, verifier, grantor, ecosystem) as Verifiable Services with `visitedDids` anti-recursion |
+| Trust evaluator | Full trust resolution per VT spec [TR-1] through [TR-8] |
 
-### Phase 4: GraphQL API (Weeks 7-8)
+### Phase 4: GraphQL API (Weeks 8-9)
 
 | Task | Description |
 |------|-------------|
@@ -1218,7 +1368,7 @@ export interface Permission {
 | Search | Full-text search implementation |
 | Pagination | Cursor-based pagination |
 
-### Phase 5: Testing & Hardening (Weeks 9-10)
+### Phase 5: Testing & Hardening (Weeks 10-11)
 
 | Task | Description |
 |------|-------------|
@@ -1342,7 +1492,7 @@ interface HealthResponse {
   status: 'healthy' | 'degraded' | 'unhealthy';
   checks: {
     database: 'ok' | 'error';
-    redis: 'ok' | 'error' | 'disabled';
+    redis: 'ok' | 'error';
     indexer: 'ok' | 'error';
     sync: {
       lastProcessedBlock: number;
@@ -1364,7 +1514,8 @@ interface HealthResponse {
 |---------|------------|
 | Cache poisoning | Validate digest_sri for all external documents |
 | DID spoofing | Verify DID document signatures per method spec |
-| Credential forgery | Verify all VC/VP cryptographic proofs |
+| Credential forgery | Verify all VC/VP cryptographic proofs (W3C signatures + AnonCreds ZKPs) |
+| VTJSC spoofing | Verify VTJSC is presented in Ecosystem DID's DID Document |
 | SQL injection | Use parameterized queries (TypeORM) |
 | DoS via GraphQL | Query complexity limits, depth limiting |
 | Data integrity | Atomic block processing with transactions |
@@ -1375,7 +1526,7 @@ interface HealthResponse {
 
 1. **Redis requirement**: **Mandatory** — Redis is required for distributed caching.
 2. **DID methods**: Initial support for `did:web` and `did:webvh`.
-3. **VC formats**: Support **both** JWT-VC and JSON-LD VC formats.
+3. **VC formats**: Support **both** JWT-VC and JSON-LD VC formats for W3C VTCs, plus AnonCreds VTCs with ZKP verification.
 4. **Clustering**: **Single-writer architecture** — blocks are processed sequentially by a single writer instance. Read replicas handle GraphQL query load for horizontal scaling.
 5. **Historical queries**: `asOfBlockHeight` argument supported in GraphQL from day one.
 
@@ -1383,7 +1534,7 @@ interface HealthResponse {
 
 ## 15. References
 
-- [Verana Trust Resolver Spec](./spec-simple.md)
+- [Verana Trust Resolver Spec](./spec.md)
 - [Verifiable Trust Specification](https://verana-labs.github.io/verifiable-trust-spec/)
 - [VPR Specification](https://verana-labs.github.io/verifiable-trust-vpr-spec/)
 - [Verana Indexer API](https://idx.testnet.verana.network/)
