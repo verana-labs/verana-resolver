@@ -51,6 +51,7 @@ flowchart TB
 
         subgraph Storage["Storage Layer"]
             DB[(PostgreSQL<br/>Local Projection)]
+            BLOB[(Blob Store<br/>S3 / Filesystem)]
         end
 
         subgraph API["API Layer"]
@@ -69,6 +70,7 @@ flowchart TB
     P1 --> DID
     P1 --> EXT
     P1 --> OBJ_CACHE
+    P1 --> BLOB
     P1 --> P2
     P2 --> TRUST_CACHE
     P2 --> DB
@@ -122,6 +124,12 @@ flowchart LR
         MIGRATIONS[Migrations]
     end
 
+    subgraph Blob["@verana/blob-store"]
+        BLOB_SVC[BlobService]
+        BLOB_S3[S3Adapter]
+        BLOB_FS[FilesystemAdapter]
+    end
+
     subgraph GraphQL["@verana/graphql"]
         SCHEMA[Schema]
         RESOLVERS[Resolvers]
@@ -140,6 +148,7 @@ flowchart LR
     Trust --> App
     Cache --> App
     Store --> App
+    Blob --> App
     GraphQL --> App
 ```
 
@@ -157,6 +166,7 @@ flowchart LR
 | `@verana/trust-engine` | Trust evaluation logic per Verifiable Trust spec |
 | `@verana/cache` | TTL-based caching for objects and trust results |
 | `@verana/store` | PostgreSQL persistence layer (TypeORM) |
+| `@verana/blob-store` | Content-addressed blob storage (S3 / filesystem) |
 | `@verana/graphql` | GraphQL schema, resolvers, data loaders |
 | `@verana/resolver-app` | Main application, pipeline orchestration |
 
@@ -203,6 +213,16 @@ verana-resolver/
 │   │   │   ├── formats/
 │   │   │   │   ├── w3c-vtc.ts
 │   │   │   │   └── anoncreds-vtc.ts
+│   │   │   ├── types.ts
+│   │   │   └── index.ts
+│   │   └── package.json
+│   │
+│   ├── blob-store/              # Content-addressed blob storage
+│   │   ├── src/
+│   │   │   ├── blob-service.ts
+│   │   │   ├── adapters/
+│   │   │   │   ├── s3.adapter.ts
+│   │   │   │   └── filesystem.adapter.ts
 │   │   │   ├── types.ts
 │   │   │   └── index.ts
 │   │   └── package.json
@@ -397,6 +417,7 @@ flowchart TD
 | `did-resolver` | Universal DID resolver |
 | `@veramo/core` | VC/VP handling (JWT-VC + JSON-LD VC) |
 | `@hyperledger/anoncreds-shared` | AnonCreds credential verification (ZKP) |
+| `@aws-sdk/client-s3` | S3-compatible blob storage client |
 | `canonicalize` | JCS canonicalization (RFC 8785) for digestSRI computation |
 | `multiformats` | CID/multibase handling |
 | `jose` | JWT/JWS verification |
@@ -417,6 +438,7 @@ flowchart TD
 |-----------|------------|---------|
 | Database | PostgreSQL 15+ | Local projection storage |
 | Cache | Redis 7+ | Distributed caching (mandatory) |
+| Blob Storage | S3-compatible / Filesystem | Content-addressed blob storage (MinIO for dev) |
 | Container | Docker | Deployment |
 | Orchestration | Docker Compose / K8s | Multi-container deployment |
 
@@ -516,7 +538,8 @@ erDiagram
     CachedObject {
         string uri PK
         string type
-        jsonb content
+        string blobKey
+        bigint contentSize
         string digestSri
         timestamp cachedAt
         timestamp expiresAt
@@ -673,11 +696,12 @@ CREATE TABLE did_documents (
     expires_at TIMESTAMP WITH TIME ZONE NOT NULL
 );
 
--- Generic object cache
+-- Generic object cache (content stored in blob store)
 CREATE TABLE cached_objects (
     uri VARCHAR(2000) PRIMARY KEY,
     object_type VARCHAR(100), -- VP, VC, JSON_SCHEMA, GOVERNANCE_DOC
-    content JSONB NOT NULL,
+    blob_key VARCHAR(500) NOT NULL, -- content-addressed key in blob store (sha256 hash)
+    content_size BIGINT, -- size in bytes, for monitoring
     digest_sri VARCHAR(255),
     cached_at TIMESTAMP WITH TIME ZONE NOT NULL,
     expires_at TIMESTAMP WITH TIME ZONE NOT NULL
@@ -1136,6 +1160,24 @@ export interface ResolverConfig {
     password?: string;
   };
   
+  // Blob storage (S3-compatible or local filesystem)
+  blobStore: {
+    backend: 's3' | 'filesystem';
+    // S3 options
+    s3?: {
+      endpoint: string;
+      region: string;
+      bucket: string;
+      accessKeyId: string;
+      secretAccessKey: string;
+      forcePathStyle?: boolean; // true for MinIO
+    };
+    // Filesystem options
+    filesystem?: {
+      basePath: string; // e.g., /data/blobs
+    };
+  };
+  
   // GraphQL
   graphql: {
     port: number;
@@ -1396,6 +1438,7 @@ flowchart TB
             PG[(PostgreSQL<br/>Primary)]
             PG_R[(PostgreSQL<br/>Replica)]
             REDIS[(Redis<br/>Cache)]
+            S3[(S3 / MinIO<br/>Blob Store)]
         end
         
         subgraph Ingress["Ingress"]
@@ -1416,6 +1459,9 @@ flowchart TB
     R1 --> REDIS
     R2 --> REDIS
     R3 --> REDIS
+    R1 --> S3
+    R2 --> S3
+    R3 --> S3
     R1 --> IDX
     R1 --> DID
     PG --> PG_R
@@ -1441,9 +1487,17 @@ services:
       - POLL_INTERVAL=5
       - CACHE_TTL=3600
       - TRUST_TTL=300
+      - BLOB_STORE_BACKEND=s3
+      - BLOB_STORE_S3_ENDPOINT=http://minio:9000
+      - BLOB_STORE_S3_REGION=us-east-1
+      - BLOB_STORE_S3_BUCKET=resolver-blobs
+      - BLOB_STORE_S3_ACCESS_KEY=minioadmin
+      - BLOB_STORE_S3_SECRET_KEY=minioadmin
+      - BLOB_STORE_S3_FORCE_PATH_STYLE=true
     depends_on:
       - postgres
       - redis
+      - minio
 
   postgres:
     image: postgres:15-alpine
@@ -1461,8 +1515,21 @@ services:
     ports:
       - "6379:6379"
 
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      - MINIO_ROOT_USER=minioadmin
+      - MINIO_ROOT_PASSWORD=minioadmin
+    volumes:
+      - minio_data:/data
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+
 volumes:
   postgres_data:
+  minio_data:
 ```
 
 ---
@@ -1481,6 +1548,7 @@ volumes:
 | `resolver_dereference_errors_total` | Counter | Dereferencing failures |
 | `resolver_trust_evaluations_total` | Counter | Trust evaluations by status |
 | `resolver_cache_hits_total` | Counter | Cache hit rate |
+| `resolver_blob_store_size_bytes` | Gauge | Total blob store usage |
 | `resolver_graphql_requests_total` | Counter | GraphQL queries |
 | `resolver_graphql_duration_seconds` | Histogram | Query latency |
 
@@ -1493,6 +1561,7 @@ interface HealthResponse {
   checks: {
     database: 'ok' | 'error';
     redis: 'ok' | 'error';
+    blobStore: 'ok' | 'error';
     indexer: 'ok' | 'error';
     sync: {
       lastProcessedBlock: number;
@@ -1518,6 +1587,7 @@ interface HealthResponse {
 | VTJSC spoofing | Verify VTJSC is presented in Ecosystem DID's DID Document |
 | SQL injection | Use parameterized queries (TypeORM) |
 | DoS via GraphQL | Query complexity limits, depth limiting |
+| Blob integrity | Verify blob content against stored SHA-256 blob_key on read |
 | Data integrity | Atomic block processing with transactions |
 
 ---
@@ -1529,6 +1599,7 @@ interface HealthResponse {
 3. **VC formats**: Support **both** JWT-VC and JSON-LD VC formats for W3C VTCs, plus AnonCreds VTCs with ZKP verification.
 4. **Clustering**: **Single-writer architecture** — blocks are processed sequentially by a single writer instance. Read replicas handle GraphQL query load for horizontal scaling.
 5. **Historical queries**: `asOfBlockHeight` argument supported in GraphQL from day one.
+6. **Blob storage**: Dereferenced objects (DID documents, VPs, VCs, JSON Schemas, governance documents) are stored in an **external content-addressed blob store** (S3-compatible or local filesystem) rather than inline in PostgreSQL. The DB stores only a `blob_key` (SHA-256 hash) and `content_size`. This keeps the DB lean (~30 GB at 1M services) while blobs scale independently on cheap storage. Two adapters are provided: `S3Adapter` for production (S3, MinIO) and `FilesystemAdapter` for local development.
 
 ---
 
