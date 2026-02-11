@@ -244,6 +244,8 @@ verana-resolver/
 │   │   │   │   ├── credential-schema.entity.ts
 │   │   │   │   ├── permission.entity.ts
 │   │   │   │   ├── did-document.entity.ts
+│   │   │   │   ├── block-timestamp.entity.ts
+│   │   │   │   ├── did-usage.entity.ts
 │   │   │   │   └── sync-state.entity.ts
 │   │   │   ├── repositories/
 │   │   │   ├── migrations/
@@ -294,6 +296,7 @@ sequenceDiagram
     participant Indexer
     participant Pass1
     participant Pass2
+    participant RetryMgr
     participant Cache
     participant Store
 
@@ -304,8 +307,33 @@ sequenceDiagram
         SyncManager->>Indexer: getBlockHeight()
         Indexer-->>SyncManager: currentHeight
         
-        alt currentHeight > lastBlock
-            loop For each block
+        alt lastBlock == null (Initial Sync per spec §8.2)
+            Note over SyncManager,Indexer: Bulk fetch all entities at currentHeight
+            SyncManager->>Indexer: getDIDDirectory(atBlockHeight: currentHeight)
+            SyncManager->>Indexer: getAllTrustRegistries(atBlockHeight: currentHeight)
+            Indexer-->>SyncManager: allEntities
+
+            SyncManager->>Pass1: processAll(allEntities, currentHeight)
+            Pass1->>Pass1: dereferenceDIDs()
+            Pass1->>Pass1: dereferenceLinkedVPs()
+            Pass1->>Indexer: listPermissions(did) for each DID
+            Indexer-->>Pass1: permissions[]
+            Pass1->>Store: upsert permissions + did_usage
+            Pass1->>Cache: store(objects)
+            Pass1->>RetryMgr: trackFailures(pass1Failures)
+            Pass1-->>SyncManager: pass1Result
+
+            SyncManager->>Pass2: evaluateAll(allDIDs)
+            Pass2->>Pass2: evaluateTrust()
+            Pass2->>Store: updateIndex(trustResults)
+            Pass2->>RetryMgr: trackFailures(pass2Failures)
+            Pass2-->>SyncManager: pass2Result
+
+            SyncManager->>Store: recordBlockTimestamp(currentHeight, blockTime)
+            SyncManager->>Store: setLastProcessedBlock(currentHeight)
+
+        else currentHeight > lastBlock (Incremental Sync per spec §8.3)
+            loop For each block (lastBlock+1 .. currentHeight)
                 SyncManager->>Indexer: listChanges(blockHeight)
                 Indexer-->>SyncManager: changes[]
                 
@@ -313,15 +341,25 @@ sequenceDiagram
                 Pass1->>Cache: invalidate(changedDIDs)
                 Pass1->>Pass1: dereferenceDIDs()
                 Pass1->>Pass1: dereferenceLinkedVPs()
+                Pass1->>Indexer: listPermissions(did) for each affected DID
+                Indexer-->>Pass1: permissions[]
+                Pass1->>Store: upsert permissions + did_usage
                 Pass1->>Cache: store(objects)
                 Pass1-->>SyncManager: pass1Result
+
+                SyncManager->>RetryMgr: retryEligiblePass1Failures()
+                RetryMgr-->>SyncManager: retryResults
                 
                 SyncManager->>Pass2: evaluate(affectedDIDs)
                 Pass2->>Cache: getTrustResult(did)
                 Pass2->>Pass2: evaluateTrust()
                 Pass2->>Store: updateIndex(trustResults)
                 Pass2-->>SyncManager: pass2Result
+
+                SyncManager->>RetryMgr: retryEligiblePass2Failures()
+                RetryMgr-->>SyncManager: retryResults
                 
+                SyncManager->>Store: recordBlockTimestamp(blockHeight, blockTime)
                 SyncManager->>Store: setLastProcessedBlock(blockHeight)
             end
         end
@@ -337,13 +375,20 @@ flowchart TD
     VISITED -->|No| ADD_VISITED[Add to visitedDids]
     ADD_VISITED --> CHECK_CACHE{Trust Cache<br/>Valid?}
     CHECK_CACHE -->|Yes| RETURN_CACHED[Return Cached Result]
-    CHECK_CACHE -->|No| RESOLVE_DID[Resolve DID Document]
+    CHECK_CACHE -->|No| DID_CACHE{DID Doc Cached<br/>& within CACHE_TTL?}
     
-    RESOLVE_DID --> PARSE_DOC[Parse DID Document]
+    DID_CACHE -->|Yes| PARSE_DOC[Parse DID Document]
+    DID_CACHE -->|No| RESOLVE_DID[Resolve DID via Network]
+    RESOLVE_DID --> STORE_DID[Store in did_documents cache]
+    STORE_DID --> PARSE_DOC
+    
     PARSE_DOC --> FIND_VP[Find linked-vp Services]
     
-    FIND_VP --> DEREF_VP[Dereference VPs]
-    DEREF_VP --> EXTRACT_VC[Extract VCs from VPs]
+    FIND_VP --> VP_CACHE{VP/VC Cached<br/>& within CACHE_TTL?}
+    VP_CACHE -->|Yes| EXTRACT_VC[Extract VCs from Cached VPs]
+    VP_CACHE -->|No| DEREF_VP[Dereference VPs via Network]
+    DEREF_VP --> STORE_VP[Store in Blob Store +<br/>cached_objects metadata]
+    STORE_VP --> EXTRACT_VC
     
     EXTRACT_VC --> DETECT_FMT{Detect Credential Format}
     
@@ -358,7 +403,7 @@ flowchart TD
     
     VERIFY_VTJSC --> CHECK_EXP[Check validUntil expiration]
     
-    CHECK_EXP --> CHECK_PERM{Check Issuer Permission}
+    CHECK_EXP --> CHECK_PERM{Check Issuer Permission<br/>from local permissions index}
     CHECK_PERM -->|W3C| W3C_PERM[Compute digestSRI → Get Digest<br/>→ effective issuance time<br/>→ verify ISSUER perm at that time]
     CHECK_PERM -->|AnonCreds| ANON_PERM[Verify ISSUER perm currently active]
     
@@ -456,15 +501,26 @@ erDiagram
         timestamp updatedAt
     }
 
+    BlockTimestamp {
+        bigint blockHeight PK
+        timestamp blockTime
+    }
+
     Service {
         string did PK
         string displayName
         string description
         jsonb metadata
+        string locationCountry
+        string locationRegion
+        string locationCity
         string trustStatus
         boolean production
         timestamp trustEvaluatedAt
         timestamp trustExpiresAt
+        jsonb validCredentials
+        jsonb ignoredCredentials
+        jsonb failedCredentials
         bigint blockHeight
         timestamp createdAt
         timestamp updatedAt
@@ -486,9 +542,11 @@ erDiagram
         string id PK
         string subjectDid FK
         string issuerDid FK
+        bigint issuerPermId
         string ecosystemDid FK
         string vtjscId
         bigint schemaId
+        string schemaName
         string type
         string format
         jsonb claims
@@ -510,6 +568,9 @@ erDiagram
         timestamp effectiveFrom
         timestamp effectiveUntil
         string status
+        timestamp revokedAt
+        timestamp slashedAt
+        decimal deposit
         bigint blockHeight
         timestamp createdAt
         timestamp updatedAt
@@ -554,12 +615,15 @@ erDiagram
         timestamp firstFailureAt
         timestamp lastRetryAt
         int retryCount
+        timestamp nextRetryAt
     }
 
     Service ||--o{ Credential : "has"
     Service }o--o{ Ecosystem : "participates_in"
+    Service ||--o{ Permission : "holds"
     Ecosystem ||--o{ CredentialSchema : "defines"
     CredentialSchema ||--o{ Permission : "has"
+    Permission }o--o| Permission : "validated_by"
     Credential }o--|| Permission : "issued_under"
     Credential }o--o| Ecosystem : "belongs_to"
 ```
@@ -573,6 +637,14 @@ CREATE TABLE sync_state (
     last_processed_block BIGINT NOT NULL DEFAULT 0,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
+
+-- Block height to timestamp mapping (recorded during ingestion)
+CREATE TABLE block_timestamps (
+    block_height BIGINT PRIMARY KEY,
+    block_time TIMESTAMP WITH TIME ZONE NOT NULL
+);
+
+CREATE INDEX idx_block_timestamps_time ON block_timestamps (block_time);
 
 -- Verified services index
 CREATE TABLE services (
@@ -665,6 +737,9 @@ CREATE TABLE permissions (
     effective_from TIMESTAMP WITH TIME ZONE,
     effective_until TIMESTAMP WITH TIME ZONE,
     status VARCHAR(50), -- ACTIVE, REVOKED, SLASHED, EXPIRED
+    revoked_at TIMESTAMP WITH TIME ZONE, -- when revoked (null if never revoked)
+    slashed_at TIMESTAMP WITH TIME ZONE, -- when slashed (null if never slashed)
+    deposit DECIMAL(30, 18), -- trust deposit amount (from Indexer)
     block_height BIGINT NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
@@ -673,6 +748,7 @@ CREATE TABLE permissions (
 CREATE INDEX idx_permissions_did ON permissions (did);
 CREATE INDEX idx_permissions_schema ON permissions (schema_id);
 CREATE INDEX idx_permissions_type ON permissions (permission_type);
+CREATE INDEX idx_permissions_status ON permissions (status);
 
 -- Credential schemas
 CREATE TABLE credential_schemas (
@@ -775,10 +851,12 @@ type Service {
   trustStatus: TrustStatus!
   production: Boolean!
   trustEvaluatedAt: DateTime
+  trustExpiresAt: DateTime
   validCredentials: [Credential!]!
   ignoredCredentials: [Credential!]!
   failedCredentials: [FailedCredential!]!
   ecosystems: [Ecosystem!]!
+  permissions: [Permission!]!
   roles: [DIDRole!]!
 }
 
@@ -870,6 +948,7 @@ type Credential {
   validUntil: DateTime
   effectiveIssuanceTime: DateTime
   digestSri: String
+  vtjscId: String
 }
 
 type CredentialIssuer {
@@ -897,6 +976,8 @@ type Permission {
   effectiveFrom: DateTime
   effectiveUntil: DateTime
   status: String!
+  revokedAt: DateTime
+  slashedAt: DateTime
   validator: Permission
   issuedCount: Int
   verifiedCount: Int
@@ -1002,6 +1083,16 @@ type Query {
 
   credential(id: ID!, asOfBlockHeight: Int): Credential
 
+  # Permissions
+  permissions(
+    filter: PermissionQueryFilter
+    first: Int
+    after: String
+    asOfBlockHeight: Int
+  ): PermissionConnection!
+
+  permission(id: ID!, asOfBlockHeight: Int): Permission
+
   # DID usage
   didUsage(did: ID!, asOfBlockHeight: Int): DIDUsage
 
@@ -1013,6 +1104,10 @@ type Query {
     after: String
     asOfBlockHeight: Int  # Historical query support
   ): SearchResultConnection!
+
+  # Block height ↔ timestamp lookup
+  blockHeightAtDate(date: DateTime!): Int  # Returns the highest block at or before the given date
+  blockTimestamp(blockHeight: Int!): DateTime  # Returns the timestamp of a given block
 
   # Sync status
   syncInfo: SyncInfo!
@@ -1062,6 +1157,14 @@ input CredentialFilter {
   format: CredentialFormat
   type: String
   status: String
+}
+
+input PermissionQueryFilter {
+  did: ID
+  schemaId: ID
+  type: PermissionType
+  ecosystemDid: ID
+  status: String  # ACTIVE, REVOKED, SLASHED, EXPIRED
 }
 
 # Order by
@@ -1275,6 +1378,8 @@ export interface VTJSCValidationResult {
 export interface IndexerClient {
   getBlockHeight(): Promise<number>;
   
+  getBlockTimestamp(blockHeight: number): Promise<string>; // ISO timestamp of the block
+  
   listChanges(blockHeight: number): Promise<EntityChange[]>;
   
   getTrustRegistry(id: number, atBlockHeight?: number): Promise<TrustRegistry>;
@@ -1289,6 +1394,9 @@ export interface IndexerClient {
   
   // Digest module — for W3C VTC effective issuance time determination
   getDigest(digestSri: string, schemaId: number): Promise<DigestEntry | null>;
+  
+  // Permission statistics (issuedCount, verifiedCount per permission)
+  getPermissionStats(permissionId: number): Promise<PermissionStats>;
 }
 
 export interface DigestEntry {
@@ -1359,6 +1467,12 @@ export interface DIDDirectoryEntry {
   changeType: 'ADD' | 'REMOVE';
 }
 
+export interface PermissionStats {
+  permissionId: number;
+  issuedCount: number;
+  verifiedCount: number;
+}
+
 export interface PermissionFilter {
   schemaId?: number;
   did?: string;
@@ -1378,6 +1492,7 @@ export interface PermissionFilter {
 | Project setup | Monorepo structure, TypeScript config, CI/CD |
 | Core module | Configuration, logging, metrics |
 | Database schema | PostgreSQL schema, migrations, TypeORM entities |
+| Blob store module | S3/filesystem adapter, content-addressed storage interface |
 | Indexer client | HTTP client for Verana Indexer API |
 
 ### Phase 2: Ingestion Pipeline (Weeks 3-4)
@@ -1385,7 +1500,7 @@ export interface PermissionFilter {
 | Task | Description |
 |------|-------------|
 | Block sync manager | Initial sync + incremental sync logic |
-| Pass1 implementation | Caching, DID resolution, VP dereferencing |
+| Pass1 implementation | Caching, DID resolution, VP dereferencing, blob storage for dereferenced objects |
 | Retry manager | Failure tracking and retry scheduling |
 | Cache layer | Object cache with TTL, Redis integration |
 
@@ -1598,8 +1713,8 @@ interface HealthResponse {
 2. **DID methods**: Initial support for `did:web` and `did:webvh`.
 3. **VC formats**: Support **both** JWT-VC and JSON-LD VC formats for W3C VTCs, plus AnonCreds VTCs with ZKP verification.
 4. **Clustering**: **Single-writer architecture** — blocks are processed sequentially by a single writer instance. Read replicas handle GraphQL query load for horizontal scaling.
-5. **Historical queries**: `asOfBlockHeight` argument supported in GraphQL from day one.
-6. **Blob storage**: Dereferenced objects (DID documents, VPs, VCs, JSON Schemas, governance documents) are stored in an **external content-addressed blob store** (S3-compatible or local filesystem) rather than inline in PostgreSQL. The DB stores only a `blob_key` (SHA-256 hash) and `content_size`. This keeps the DB lean (~30 GB at 1M services) while blobs scale independently on cheap storage. Two adapters are provided: `S3Adapter` for production (S3, MinIO) and `FilesystemAdapter` for local development.
+5. **Historical queries**: `asOfBlockHeight` argument supported in GraphQL from day one. A `block_timestamps` table maps block heights to timestamps, and `blockHeightAtDate` / `blockTimestamp` GraphQL queries enable timestamp-based historical lookups.
+6. **Blob storage**: Large dereferenced objects (VPs, VCs, JSON Schemas, governance documents) are stored in an **external content-addressed blob store** (S3-compatible or local filesystem) rather than inline in PostgreSQL. The `cached_objects` table stores only a `blob_key` (SHA-256 hash) and `content_size`. DID documents are the exception — they remain inline as `JSONB` in the `did_documents` table because they are small (1-5 KB), frequently accessed during trust evaluation, and need fast parsing without a blob round-trip. This keeps the DB lean (~30 GB at 1M services) while blobs scale independently on cheap storage. Two adapters are provided: `S3Adapter` for production (S3, MinIO) and `FilesystemAdapter` for local development.
 
 ---
 
