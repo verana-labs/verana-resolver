@@ -1549,8 +1549,7 @@
               "enum": [
                 "PENDING",
                 "VALIDATED",
-                "TERMINATED",
-                "VALIDATION_STATE_UNSPECIFIED"
+                "TERMINATED"
               ]
             },
             "description": "Filter by validation process state"
@@ -3388,8 +3387,7 @@
             "enum": [
               "PENDING",
               "VALIDATED",
-              "TERMINATED",
-              "VALIDATION_STATE_UNSPECIFIED"
+              "TERMINATED"
             ]
           },
           "vp_last_state_change": {
@@ -3415,10 +3413,32 @@
           "vp_validator_deposit": {
             "type": "string"
           },
-          "vp_term_requested": {
+          "adjusted": {
             "type": "string",
             "format": "date-time",
-            "nullable": true
+            "nullable": true,
+            "description": "Timestamp this Permission has been adjusted"
+          },
+          "issuance_fee_discount": {
+            "type": "string",
+            "description": "Issuance fee discount (0 = no discount, 1 = 100% discount)"
+          },
+          "verification_fee_discount": {
+            "type": "string",
+            "description": "Verification fee discount (0 = no discount, 1 = 100% discount)"
+          },
+          "vs_operator_authz_enabled": {
+            "type": "boolean",
+            "description": "Whether vs_operator is authorized to execute CreateOrUpdatePermissionSession on behalf of authority"
+          },
+          "vs_operator_authz_spend_period": {
+            "type": "string",
+            "nullable": true,
+            "description": "Reset period for vs_operator spend limits"
+          },
+          "vs_operator_authz_with_feegrant": {
+            "type": "boolean",
+            "description": "Whether feegrant is enabled for vs_operator in this permission"
           }
         }
       },
