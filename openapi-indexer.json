@@ -1,0 +1,4088 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "Verana Indexer API",
+    "description": "Comprehensive API for managing decentralized identifiers, trust registries, credential schemas, and permissions in the Verana ecosystem.\n\nIndexer endpoints (under /verana/indexer/v1) expose the current indexed block height and a changes feed that can be queried by block_height. Other module endpoints may accept the At-Block-Height header to query historical state; when omitted, they return the latest indexed state.",
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "https://idx.testnet.verana.network",
+      "description": "Testnet API server"
+    },
+    {
+      "url": "http://localhost:3001",
+      "description": "Local development server"
+    }
+  ],
+  "paths": {
+    "/verana/indexer/v1/block-height": {
+      "get": {
+        "tags": [
+          "Indexer"
+        ],
+        "summary": "Get indexed block height",
+        "description": "Return the latest block height that has been fully processed by the indexer.",
+        "operationId": "getBlockHeight",
+        "responses": {
+          "200": {
+            "description": "Current indexed block height",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "description": "Response type identifier",
+                      "example": "block-processed"
+                    },
+                    "height": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "description": "The latest block height that has been fully processed by the indexer"
+                    },
+                    "timestamp": {
+                      "type": "string",
+                      "format": "date-time",
+                      "description": "The timestamp when the checkpoint was last updated (ISO 8601 format without milliseconds)"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "height",
+                    "timestamp"
+                  ]
+                },
+                "example": {
+                  "type": "block-processed",
+                  "height": 1794800,
+                  "timestamp": "2025-12-17T04:42:55Z"
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/verana/indexer/v1/version": {
+      "get": {
+        "tags": [
+          "Indexer"
+        ],
+        "summary": "Get indexer version and environment info",
+        "description": "Return the indexer version and network environment configuration details.",
+        "operationId": "getVersion",
+        "responses": {
+          "200": {
+            "description": "Indexer version and environment information",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "appVersion": {
+                      "type": "string",
+                      "example": "v1.0.0-dev.31"
+                    },
+                    "environment": {
+                      "type": "object",
+                      "properties": {
+                        "network": {
+                          "type": "object",
+                          "properties": {
+                            "chainId": {
+                              "type": "string",
+                              "example": "vna-testnet-1"
+                            },
+                            "rpcEndpoint": {
+                              "type": "string",
+                              "example": "https://rpc.testnet.verana.network"
+                            },
+                            "lcdEndpoint": {
+                              "type": "string",
+                              "example": "https://api.testnet.verana.network"
+                            },
+                            "cosmosSdkVersion": {
+                              "type": "string",
+                              "example": "0.46.0"
+                            },
+                            "nodeVersion": {
+                              "type": "string",
+                              "example": "v0.1.0"
+                            },
+                            "appName": {
+                              "type": "string",
+                              "example": "verana-indexer"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "example": {
+                  "appVersion": "v1.0.0-dev.31",
+                  "environment": {
+                    "network": {
+                      "chainId": "vna-testnet-1",
+                      "rpcEndpoint": "https://rpc.testnet.verana.network",
+                      "lcdEndpoint": "https://api.testnet.verana.network",
+                      "cosmosSdkVersion": "0.46.0",
+                      "nodeVersion": "v0.1.0",
+                      "appName": "verana-indexer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/verana/indexer/v1/status": {
+      "get": {
+        "tags": [
+          "Indexer"
+        ],
+        "summary": "Get indexer operational status",
+        "description": "Return the current operational status of the indexer, including whether it is running, whether crawling is active, and any error information if crawling or the indexer has stopped. This endpoint is useful for monitoring and debugging indexer issues.",
+        "operationId": "getIndexerStatus",
+        "responses": {
+          "200": {
+            "description": "Indexer status information",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "isRunning": {
+                      "type": "boolean",
+                      "description": "Whether the indexer service is running. If false, all APIs will return 503.",
+                      "example": true
+                    },
+                    "isCrawling": {
+                      "type": "boolean",
+                      "description": "Whether the indexer is actively crawling new blocks and transactions. If false, APIs remain available but no new data is being indexed.",
+                      "example": false
+                    },
+                    "stoppedAt": {
+                      "type": "string",
+                      "format": "date-time",
+                      "description": "ISO 8601 timestamp when the indexer or crawling stopped (if applicable)",
+                      "example": "2024-01-15T10:30:00Z"
+                    },
+                    "stoppedReason": {
+                      "type": "string",
+                      "description": "Human-readable reason why crawling or the indexer stopped (if applicable)",
+                      "example": "Crawling stopped due to: Unknown Verana message types: /verana.perm.v1.MsgCreateRootPermission. Indexer APIs remain available."
+                    },
+                    "lastError": {
+                      "type": "object",
+                      "description": "Details about the last error that caused crawling or indexer to stop (if applicable)",
+                      "properties": {
+                        "message": {
+                          "type": "string",
+                          "description": "Error message",
+                          "example": "Unknown Verana message types: /verana.perm.v1.MsgCreateRootPermission"
+                        },
+                        "stack": {
+                          "type": "string",
+                          "description": "Error stack trace (if available)",
+                          "example": "Error: Unknown Verana message types...\n    at ..."
+                        },
+                        "timestamp": {
+                          "type": "string",
+                          "format": "date-time",
+                          "description": "When the error occurred",
+                          "example": "2024-01-15T10:30:00Z"
+                        },
+                        "service": {
+                          "type": "string",
+                          "description": "Service name where the error occurred",
+                          "example": "crawl-tx"
+                        }
+                      }
+                    }
+                  },
+                  "required": [
+                    "isRunning",
+                    "isCrawling"
+                  ]
+                },
+                "example": {
+                  "isRunning": true,
+                  "isCrawling": false,
+                  "stoppedAt": "2024-01-15T10:30:00Z",
+                  "stoppedReason": "Crawling stopped due to: Unknown Verana message types: /verana.perm.v1.MsgCreateRootPermission. Indexer APIs remain available.",
+                  "lastError": {
+                    "message": "Unknown Verana message types: /verana.perm.v1.MsgCreateRootPermission",
+                    "timestamp": "2024-01-15T10:30:00Z",
+                    "service": "crawl-tx"
+                  }
+                }
+              }
+            },
+            "headers": {
+              "X-Crawling-Status": {
+                "description": "Current crawling status: 'active' or 'stopped'",
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "active",
+                    "stopped"
+                  ],
+                  "example": "stopped"
+                }
+              },
+              "X-Indexer-Status": {
+                "description": "Current indexer status: 'running' or 'stopped'",
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "running",
+                    "stopped"
+                  ],
+                  "example": "running"
+                }
+              },
+              "X-Crawling-Reason": {
+                "description": "Reason why crawling stopped (only present when crawling is stopped)",
+                "schema": {
+                  "type": "string",
+                  "example": "Crawling stopped due to: Unknown Verana message types..."
+                }
+              },
+              "X-Crawling-Error": {
+                "description": "Error message that caused crawling to stop (only present when crawling is stopped)",
+                "schema": {
+                  "type": "string",
+                  "example": "Unknown Verana message types: /verana.perm.v1.MsgCreateRootPermission"
+                }
+              },
+              "X-Crawling-Stopped-At": {
+                "description": "ISO 8601 timestamp when crawling stopped (only present when crawling is stopped)",
+                "schema": {
+                  "type": "string",
+                  "format": "date-time",
+                  "example": "2024-01-15T10:30:00Z"
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/verana/indexer/v1/changes/{block_height}": {
+      "get": {
+        "tags": [
+          "Indexer"
+        ],
+        "summary": "List entity changes at a block height",
+        "description": "Return all indexed entity changes for the requested block height.",
+        "operationId": "listChanges",
+        "parameters": [
+          {
+            "name": "block_height",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "description": "The block height to query changes for. Must be a positive integer not exceeding the current indexed block height."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Entity changes recorded at the requested block height",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "block_height": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "activity": {
+                      "type": "array",
+                      "description": "List of activity items at this block height (same format as history endpoints)",
+                      "items": {
+                        "$ref": "#/components/schemas/ActivityItem"
+                      }
+                    }
+                  }
+                },
+                "example": {
+                  "block_height": 123450,
+                  "activity": [
+                    {
+                      "timestamp": "2025-11-24T07:00:00.000Z",
+                      "block_height": "123450",
+                      "entity_type": "DID",
+                      "entity_id": "did:verana:abc123",
+                      "account": "verana1abcd...",
+                      "msg": "AddDID",
+                      "changes": {
+                        "created": {
+                          "old": null,
+                          "new": "2025-11-24T07:00:00.000Z"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/verana/tr/v1/get/{id}": {
+      "get": {
+        "tags": [
+          "Trust Registry"
+        ],
+        "summary": "Get Trust Registry",
+        "description": "Retrieve a specific Trust Registry by its ID",
+        "operationId": "getTrustRegistry",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The Trust Registry ID to retrieve"
+          },
+          {
+            "name": "active_gf_only",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            },
+            "description": "Filter only active governance frameworks"
+          },
+          {
+            "name": "preferred_language",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Preferred language for document content"
+          },
+          {
+            "$ref": "#/components/parameters/At-Block-Height"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response with Trust Registry details",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrustRegistryResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Trust Registry not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": "Trust Registry not found: 1",
+                  "code": 404
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/verana/tr/v1/list": {
+      "get": {
+        "tags": [
+          "Trust Registry"
+        ],
+        "summary": "List Trust Registries",
+        "description": "Retrieve a paginated list of Trust Registries with optional filtering",
+        "operationId": "listTrustRegistry",
+        "parameters": [
+          {
+            "name": "active_gf_only",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            },
+            "description": "Filter only active governance frameworks"
+          },
+          {
+            "name": "preferred_language",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Preferred language for document content"
+          },
+          {
+            "name": "authority",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Filter by authority (group account address)"
+          },
+          {
+            "name": "response_max_size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1024,
+              "default": 64
+            },
+            "description": "Maximum number of records to return"
+          },
+          {
+            "name": "modified_after",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "description": "Filter by modification date"
+          },
+          {
+            "name": "only_active",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            },
+            "description": "Filter by active status. If true, returns only active trust registries (archived is null). If false, returns only archived trust registries (archived is not null). If omitted, returns all trust registries (both active and archived). Active/inactive is determined by the archived field (null for active, timestamp for archived)."
+          },
+          {
+            "name": "controller",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Filter by controller account"
+          },
+          {
+            "name": "min_active_schemas",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "description": "Minimum number of active schemas (inclusive)"
+          },
+          {
+            "name": "max_active_schemas",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "description": "Maximum number of active schemas (exclusive)."
+          },
+          {
+            "name": "participant",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Account (e.g. verana8127329). Filter TRs where account is controller or grantee."
+          },
+          {
+            "name": "min_participants",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "description": "Minimum number of participants (inclusive)"
+          },
+          {
+            "name": "max_participants",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "description": "Maximum number of participants (exclusive)."
+          },
+          {
+            "name": "min_weight",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Minimum weight (inclusive)"
+          },
+          {
+            "name": "max_weight",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Maximum weight (exclusive). "
+          },
+          {
+            "name": "min_issued",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Minimum number of issued credentials (inclusive)"
+          },
+          {
+            "name": "max_issued",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Maximum number of issued credentials (exclusive)."
+          },
+          {
+            "name": "min_verified",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Minimum number of verified credentials (inclusive)"
+          },
+          {
+            "name": "max_verified",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Maximum number of verified credentials (exclusive)."
+          },
+          {
+            "name": "min_ecosystem_slash_events",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "description": "Minimum accepted number of ecosystem slash events (inclusive)"
+          },
+          {
+            "name": "max_ecosystem_slash_events",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "description": "Maximum accepted number of ecosystem slash events (exclusive). "
+          },
+          {
+            "name": "min_network_slash_events",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "description": "Minimum accepted number of network slash events (inclusive)"
+          },
+          {
+            "name": "max_network_slash_events",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "description": "Maximum accepted number of network slash events (exclusive). "
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Comma separated list of sort criteria. Prefix with - for descending, + (or nothing) for ascending. Allowed attributes: id, modified, created, participants, active_schemas, weight, issued, verified, ecosystem_slash_events, ecosystem_slashed_amount, network_slash_events, network_slashed_amount. Default: -modified"
+          },
+          {
+            "$ref": "#/components/parameters/At-Block-Height"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response with list of Trust Registries",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrustRegistryListResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/verana/tr/v1/params": {
+      "get": {
+        "tags": [
+          "Trust Registry"
+        ],
+        "summary": "Get Trust Registry parameters",
+        "description": "Retrieve current system parameters for Trust Registry",
+        "operationId": "getTrustRegistryParams",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/At-Block-Height"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response with Trust Registry parameters",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrustRegistryParamsResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/verana/tr/v1/history/{id}": {
+      "get": {
+        "tags": [
+          "Trust Registry"
+        ],
+        "summary": "Get Trust Registry activity timeline",
+        "description": "Retrieve the activity timeline for a Trust Registry, showing all changes ordered by transaction timestamp descending. Returns only changed values in the changes field.",
+        "operationId": "getTrustRegistryHistory",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The Trust Registry ID to retrieve history for"
+          },
+          {
+            "name": "response_max_size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1000,
+              "default": 64
+            },
+            "description": "Maximum number of activity items to return (default: 64)"
+          },
+          {
+            "name": "transaction_timestamp_older_than",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "description": "ISO 8601 timestamp to paginate results. Returns only activities with timestamps older than this value."
+          },
+          {
+            "$ref": "#/components/parameters/At-Block-Height"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response with Trust Registry activity timeline",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActivityTimelineResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Trust Registry history not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": "Trust Registry history not found: 5",
+                  "code": 404
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/verana/cs/v1/get/{id}": {
+      "get": {
+        "tags": [
+          "Credential Schema"
+        ],
+        "summary": "Get Credential Schema",
+        "description": "Retrieve a specific Credential Schema by its ID",
+        "operationId": "getCredentialSchema",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The Credential Schema ID to retrieve"
+          },
+          {
+            "$ref": "#/components/parameters/At-Block-Height"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response with Credential Schema details",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CredentialSchemaResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Credential Schema not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": "Credential Schema not found: 3",
+                  "code": 404
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/verana/cs/v1/js/{id}": {
+      "get": {
+        "tags": [
+          "Credential Schema"
+        ],
+        "summary": "Get JSON Schema",
+        "description": "Retrieve the JSON Schema definition for a specific Credential Schema",
+        "operationId": "getJsonSchema",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The Credential Schema ID to retrieve JSON Schema for"
+          },
+          {
+            "$ref": "#/components/parameters/At-Block-Height"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response with JSON Schema",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JsonSchemaResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "JSON Schema not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": "JSON Schema not found for Credential Schema: 3",
+                  "code": 404
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/verana/cs/v1/list": {
+      "get": {
+        "tags": [
+          "Credential Schema"
+        ],
+        "summary": "List Credential Schemas",
+        "description": "Retrieve a paginated list of Credential Schemas with optional filtering",
+        "operationId": "listCredentialSchemas",
+        "parameters": [
+          {
+            "name": "tr_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Filter by Trust Registry ID"
+          },
+          {
+            "name": "modified_after",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "description": "Filter by modification date"
+          },
+          {
+            "name": "only_active",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            },
+            "description": "Filter by active status. If true, returns only active schemas (archived is null or false). If false or omitted, returns all schemas (both active and archived). Active/inactive is determined by the archived field."
+          },
+          {
+            "name": "issuer_perm_management_mode",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "OPEN",
+                "ECOSYSTEM",
+                "GRANTOR_VALIDATION"
+              ]
+            },
+            "description": "Filter by issuer permission management mode"
+          },
+          {
+            "name": "verifier_perm_management_mode",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "OPEN",
+                "ECOSYSTEM",
+                "GRANTOR_VALIDATION"
+              ]
+            },
+            "description": "Filter by verifier permission management mode"
+          },
+          {
+            "name": "response_max_size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1024,
+              "default": 64
+            },
+            "description": "Maximum number of records to return in the response"
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Comma-separated list of sort criteria. Prefix with '-' for descending, '+' or nothing for ascending. Allowed attributes: id, modified, created, participants, weight, issued, verified, ecosystem_slash_events, ecosystem_slashed_amount, network_slash_events, network_slashed_amount. Default: -modified"
+          },
+          {
+            "name": "participant",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Account (e.g. verana8127329). Filter schemas where account is controller (via TR) or grantee."
+          },
+          {
+            "name": "min_participants",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "description": "Minimum of participants (inclusive)"
+          },
+          {
+            "name": "max_participants",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "description": "Maximum of participants (exclusive)."
+          },
+          {
+            "name": "min_weight",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Minimum weight (inclusive)"
+          },
+          {
+            "name": "max_weight",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Maximum weight (exclusive). "
+          },
+          {
+            "name": "min_issued",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Minimum number of issued credentials (inclusive)"
+          },
+          {
+            "name": "max_issued",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Maximum number of issued credentials (exclusive)."
+          },
+          {
+            "name": "min_verified",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Minimum number of verified credentials (inclusive)"
+          },
+          {
+            "name": "max_verified",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Maximum number of verified credentials (exclusive)."
+          },
+          {
+            "name": "min_ecosystem_slash_events",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "description": "Minimum accepted number of ecosystem slash events (inclusive)"
+          },
+          {
+            "name": "max_ecosystem_slash_events",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "description": "Maximum accepted number of ecosystem slash events (exclusive). "
+          },
+          {
+            "name": "min_network_slash_events",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "description": "Minimum accepted number of network slash events (inclusive)"
+          },
+          {
+            "name": "max_network_slash_events",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "description": "Maximum accepted number of network slash events (exclusive). "
+          },
+          {
+            "$ref": "#/components/parameters/At-Block-Height"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response with list of Credential Schemas",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CredentialSchemaListResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/verana/cs/v1/params": {
+      "get": {
+        "tags": [
+          "Credential Schema"
+        ],
+        "summary": "Get Credential Schema parameters",
+        "description": "Retrieve current system parameters for Credential Schemas",
+        "operationId": "getCredentialSchemaParams",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/At-Block-Height"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response with Credential Schema parameters",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CredentialSchemaParamsResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/verana/cs/v1/sap/get/{id}": {
+      "get": {
+        "tags": [
+          "Credential Schema"
+        ],
+        "summary": "Get Schema Authorization Policy",
+        "description": "Retrieve a specific Schema Authorization Policy by its unique ID",
+        "operationId": "getSchemaAuthorizationPolicy",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The Schema Authorization Policy ID to retrieve"
+          },
+          {
+            "$ref": "#/components/parameters/At-Block-Height"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response with Schema Authorization Policy details",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SchemaAuthorizationPolicyResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Schema Authorization Policy not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": "Schema Authorization Policy not found: 1",
+                  "code": 404
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/verana/cs/v1/sap/list": {
+      "get": {
+        "tags": [
+          "Credential Schema"
+        ],
+        "summary": "List Schema Authorization Policies",
+        "description": "List Schema Authorization Policies for a given credential schema and role",
+        "operationId": "listSchemaAuthorizationPolicies",
+        "parameters": [
+          {
+            "name": "schema_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "ID of the related Credential Schema"
+          },
+          {
+            "name": "role",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "ISSUER",
+                "VERIFIER"
+              ]
+            },
+            "description": "Role filter: ISSUER or VERIFIER"
+          },
+          {
+            "$ref": "#/components/parameters/At-Block-Height"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response with list of Schema Authorization Policies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SchemaAuthorizationPolicyListResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/verana/cs/v1/history/{id}": {
+      "get": {
+        "tags": [
+          "Credential Schema"
+        ],
+        "summary": "Get Credential Schema activity timeline",
+        "description": "Retrieve the activity timeline for a Credential Schema, showing all changes ordered by transaction timestamp descending. Returns only changed values in the changes field.",
+        "operationId": "getCredentialSchemaHistory",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The Credential Schema ID to retrieve history for"
+          },
+          {
+            "name": "response_max_size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1000,
+              "default": 64
+            },
+            "description": "Maximum number of activity items to return (default: 64)"
+          },
+          {
+            "name": "transaction_timestamp_older_than",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "description": "ISO 8601 timestamp to paginate results. Returns only activities with timestamps older than this value."
+          },
+          {
+            "$ref": "#/components/parameters/At-Block-Height"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response with Credential Schema history",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CredentialSchemaHistoryResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Credential Schema history not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": "Credential Schema history not found: 3",
+                  "code": 404
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/verana/perm/v1/get/{id}": {
+      "get": {
+        "tags": [
+          "Permissions"
+        ],
+        "summary": "Get Permission",
+        "description": "Retrieve a specific Permission by its ID",
+        "operationId": "getPermission",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The Permission ID to retrieve"
+          },
+          {
+            "$ref": "#/components/parameters/At-Block-Height"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response with Permission details",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Permission not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": "Permission not found: 1",
+                  "code": 404
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/verana/perm/v1/session/get/{id}": {
+      "get": {
+        "tags": [
+          "Permissions"
+        ],
+        "summary": "Get Permission Session",
+        "description": "Retrieve a specific Permission Session by its ID",
+        "operationId": "getPermissionSession",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "The Permission Session ID to retrieve"
+          },
+          {
+            "$ref": "#/components/parameters/At-Block-Height"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response with Permission Session details",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionSessionResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Permission Session not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": "Permission Session not found: 123e4567-e89b-12d3-a456-426614174000",
+                  "code": 404
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/verana/perm/v1/list": {
+      "get": {
+        "tags": [
+          "Permissions"
+        ],
+        "summary": "List Permissions",
+        "description": "Retrieve a paginated list of Permissions with extensive filtering options",
+        "operationId": "listPermissions",
+        "parameters": [
+          {
+            "name": "grantee",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Filter by grantee account"
+          },
+          {
+            "name": "did",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Filter by DID"
+          },
+          {
+            "name": "perm_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Filter by permission ID"
+          },
+          {
+            "name": "type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "ISSUER",
+                "VERIFIER",
+                "ISSUER_GRANTOR",
+                "VERIFIER_GRANTOR",
+                "ECOSYSTEM",
+                "HOLDER"
+              ]
+            },
+            "description": "Filter by permission type"
+          },
+          {
+            "name": "only_valid",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            },
+            "description": "Filter only valid permissions"
+          },
+          {
+            "name": "only_slashed",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            },
+            "description": "Filter only slashed permissions"
+          },
+          {
+            "name": "only_repaid",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            },
+            "description": "Filter only repaid permissions"
+          },
+          {
+            "name": "modified_after",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "description": "Filter by modification date"
+          },
+          {
+            "name": "country",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Filter by country code"
+          },
+          {
+            "name": "vp_state",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "PENDING",
+                "VALIDATED",
+                "TERMINATED",
+                "VALIDATION_STATE_UNSPECIFIED"
+              ]
+            },
+            "description": "Filter by validation process state"
+          },
+          {
+            "name": "response_max_size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1024,
+              "default": 64
+            },
+            "description": "Maximum number of records to return"
+          },
+          {
+            "name": "when",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "description": "Filter by effective date"
+          },
+          {
+            "name": "schema_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Filter by schema ID"
+          },
+          {
+            "name": "validator_perm_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Filter by validator permission ID"
+          },
+          {
+            "name": "perm_state",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "REPAID",
+                "SLASHED",
+                "REVOKED",
+                "EXPIRED",
+                "ACTIVE",
+                "FUTURE",
+                "INACTIVE"
+              ]
+            },
+            "description": "Filter by permission state (calculated based on repaid, slashed, revoked, and effective dates)"
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Comma-separated list of sort criteria, prefixed with - for descending, and + (or nothing) for ascending. Allowed attributes: id, modified, created, participants, weight, issued, verified, ecosystem_slash_events, ecosystem_slashed_amount, network_slash_events, network_slashed_amount. Default: -modified"
+          },
+          {
+            "name": "min_participants",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Minimum number of participants (inclusive)"
+          },
+          {
+            "name": "max_participants",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Maximum number of participants (exclusive)."
+          },
+          {
+            "name": "min_weight",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Minimum weight (inclusive)"
+          },
+          {
+            "name": "max_weight",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Maximum weight (exclusive). "
+          },
+          {
+            "name": "min_issued",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Minimum number of issued credentials (inclusive)"
+          },
+          {
+            "name": "max_issued",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Maximum number of issued credentials (exclusive)."
+          },
+          {
+            "name": "min_verified",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Minimum number of verified credentials (inclusive)"
+          },
+          {
+            "name": "max_verified",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Maximum number of verified credentials (exclusive)."
+          },
+          {
+            "name": "min_ecosystem_slash_events",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Minimum accepted number of ecosystem slash events (inclusive)"
+          },
+          {
+            "name": "max_ecosystem_slash_events",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Maximum accepted number of ecosystem slash events (exclusive). "
+          },
+          {
+            "name": "min_network_slash_events",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Minimum accepted number of network slash events (inclusive)"
+          },
+          {
+            "name": "max_network_slash_events",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Maximum accepted number of network slash events (exclusive). "
+          },
+          {
+            "$ref": "#/components/parameters/At-Block-Height"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response with list of Permissions",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionListResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/verana/perm/v1/pending/flat": {
+      "get": {
+        "tags": [
+          "Permissions"
+        ],
+        "summary": "Get pending tasks",
+        "description": "Return pending tasks for a given account grouped by Trust Registry and Credential Schema. Supports At-Block-Height header for historical state.",
+        "operationId": "pendingFlat",
+        "parameters": [
+          {
+            "name": "account",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Account address"
+          },
+          {
+            "name": "response_max_size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1024,
+              "default": 64
+            },
+            "description": "Maximum number of trust registries to return"
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Comma-separated list of sort criteria. Default: -modified"
+          },
+          {
+            "$ref": "#/components/parameters/At-Block-Height"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response with pending tasks grouped by trust registry and credential schema",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PendingFlatResponse"
+                },
+                "example": {
+                  "trust_registries": [
+                    {
+                      "id": "2",
+                      "did": "did:example:186af95a000ef890a583f47a0274a800",
+                      "aka": "https://example.com",
+                      "pending_tasks": 5,
+                      "participants": 10,
+                      "credential_schemas": [
+                        {
+                          "id": "1234",
+                          "title": "ExampleCredential",
+                          "description": "Example Credential Json Schema",
+                          "pending_tasks": 2,
+                          "participants": 3,
+                          "permissions": [
+                            {
+                              "id": "1",
+                              "type": "ECOSYSTEM",
+                              "vp_state": "PENDING",
+                              "perm_state": "ACTIVE",
+                              "grantee": "verana12dyk...",
+                              "did": "did:example:123",
+                              "modified": "2025-10-03T11:59:38.834380988Z"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/verana/metrics/v1/all": {
+      "get": {
+        "tags": [
+          "Metrics"
+        ],
+        "summary": "Get Global Current Metrics",
+        "description": "Return global current metrics across all Trust Registries and Credential Schemas. Supports At-Block-Height header for historical state.",
+        "operationId": "getGlobalMetrics",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/At-Block-Height"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Global metrics",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GlobalMetricsResponse"
+                },
+                "example": {
+                  "participants": 12345,
+                  "active_trust_registries": 12,
+                  "archived_trust_registries": 3,
+                  "active_schemas": 256,
+                  "archived_schemas": 42,
+                  "weight": "1234567890000000000",
+                  "issued": 987654,
+                  "verified": 543210,
+                  "ecosystem_slash_events": 5,
+                  "ecosystem_slashed_amount": "100000000000000",
+                  "ecosystem_slashed_amount_repaid": "50000000000000",
+                  "network_slash_events": 1,
+                  "network_slashed_amount": "250000000000000",
+                  "network_slashed_amount_repaid": "100000000000000"
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/verana/perm/v1/permission-sessions": {
+      "get": {
+        "tags": [
+          "Permissions"
+        ],
+        "summary": "List Permission Sessions",
+        "description": "Retrieve a paginated list of Permission Sessions",
+        "operationId": "listPermissionSessions",
+        "parameters": [
+          {
+            "name": "modified_after",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "description": "Filter by modification date"
+          },
+          {
+            "name": "response_max_size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1024,
+              "default": 64
+            },
+            "description": "Maximum number of records to return"
+          },
+          {
+            "$ref": "#/components/parameters/At-Block-Height"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response with list of Permission Sessions",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionSessionListResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/verana/perm/v1/beneficiaries": {
+      "get": {
+        "tags": [
+          "Permissions"
+        ],
+        "summary": "Find Beneficiaries",
+        "description": "Find permission beneficiaries based on issuer and verifier permissions",
+        "operationId": "findBeneficiaries",
+        "parameters": [
+          {
+            "name": "issuer_perm_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Issuer Permission ID"
+          },
+          {
+            "name": "verifier_perm_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Verifier Permission ID"
+          },
+          {
+            "$ref": "#/components/parameters/At-Block-Height"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response with beneficiary permissions",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeneficiaryResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "404": {
+            "description": "Beneficiaries not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": "No beneficiaries found for issuer_perm_id: 1 and verifier_perm_id: 2",
+                  "code": 404
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/verana/perm/v1/params": {
+      "get": {
+        "tags": [
+          "Permissions"
+        ],
+        "summary": "Get Permission module parameters",
+        "description": "Retrieve current system parameters for the Permission module",
+        "operationId": "getPermissionParams",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/At-Block-Height"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response with Permission module parameters",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionParamsResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/verana/perm/v1/history/{id}": {
+      "get": {
+        "tags": [
+          "Permissions"
+        ],
+        "summary": "Get Permission activity timeline",
+        "description": "Retrieve the activity timeline for a Permission, showing all changes ordered by transaction timestamp descending. Returns only changed values in the changes field.",
+        "operationId": "getPermissionHistory",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Permission ID whose history will be returned"
+          },
+          {
+            "name": "response_max_size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1000,
+              "default": 64
+            },
+            "description": "Maximum number of activity items to return (default: 64)"
+          },
+          {
+            "name": "transaction_timestamp_older_than",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "description": "ISO 8601 timestamp to paginate results. Returns only activities with timestamps older than this value."
+          },
+          {
+            "$ref": "#/components/parameters/At-Block-Height"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response with Permission activity timeline",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActivityTimelineResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Permission history not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/verana/perm/v1/permission-session-history/{id}": {
+      "get": {
+        "tags": [
+          "Permissions"
+        ],
+        "summary": "Get Permission Session History",
+        "description": "Retrieve the recorded history for a specific Permission Session ID.",
+        "operationId": "getPermissionSessionHistory",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Permission Session ID to fetch history for"
+          },
+          {
+            "$ref": "#/components/parameters/At-Block-Height"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "History entries for the given Permission Session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionSessionHistoryResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No history entries found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/verana/td/v1/get/{account}": {
+      "get": {
+        "tags": [
+          "TrustDeposit"
+        ],
+        "summary": "Get Trust Deposit by Account",
+        "description": "Retrieve trust deposit information for a specific account",
+        "operationId": "getTrustDepositByAccount",
+        "parameters": [
+          {
+            "name": "account",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The account address to retrieve trust deposit for"
+          },
+          {
+            "$ref": "#/components/parameters/At-Block-Height"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response with trust deposit details",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrustDepositResponse"
+                },
+                "example": {
+                  "trust_deposit": {
+                    "account": "verana1sxau0xyttphpck7vhlvt8s82ez70nlzw2mhya0",
+                    "share": "20000000",
+                    "amount": "20000000",
+                    "claimable": "0",
+                    "slashed_deposit": "0",
+                    "repaid_deposit": "0",
+                    "last_slashed": null,
+                    "last_repaid": null,
+                    "slash_count": 0,
+                    "last_repaid_by": ""
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Trust Deposit not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": "Trust Deposit not found for account: verana1sxau0xyttphpck7vhlvt8s82ez70nlzw2mhya0",
+                  "code": 404
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/verana/td/v1/params": {
+      "get": {
+        "tags": [
+          "TrustDeposit"
+        ],
+        "summary": "Get Trust Deposit Parameters",
+        "description": "Retrieve current system parameters for Trust Deposit module",
+        "operationId": "getTrustDepositParams",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/At-Block-Height"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response with Trust Deposit parameters",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrustDepositParamsResponse"
+                },
+                "example": {
+                  "params": {
+                    "trust_deposit_rate": "0.200000000000000000",
+                    "user_agent_reward_rate": "0.200000000000000000",
+                    "trust_deposit_share_value": "1.000000000000000000",
+                    "wallet_user_agent_reward_rate": "0.200000000000000000",
+                    "trust_deposit_reclaim_burn_rate": "0.600000000000000000"
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/verana/td/v1/history/{account}": {
+      "get": {
+        "tags": [
+          "TrustDeposit"
+        ],
+        "summary": "Get Trust Deposit activity timeline",
+        "description": "Retrieve the activity timeline for a Trust Deposit, showing all changes ordered by transaction timestamp descending. Returns only changed values in the changes field.",
+        "operationId": "getTrustDepositHistory",
+        "parameters": [
+          {
+            "name": "account",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The account address to retrieve trust deposit history for"
+          },
+          {
+            "name": "response_max_size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1000,
+              "default": 64
+            },
+            "description": "Maximum number of activity items to return (default: 64)"
+          },
+          {
+            "name": "transaction_timestamp_older_than",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "description": "ISO 8601 timestamp to paginate results. Returns only activities with timestamps older than this value."
+          },
+          {
+            "$ref": "#/components/parameters/At-Block-Height"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response with Trust Deposit activity timeline",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActivityTimelineResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Trust Deposit history not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": "No trust deposit history found for account: verana1sxau0xyttphpck7vhlvt8s82ez70nlzw2mhya0",
+                  "code": 404
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/verana/di/v1/get/{digest_sri}": {
+      "get": {
+        "tags": [
+          "Digest"
+        ],
+        "summary": "Get Digest",
+        "description": "Look up a stored digest by its SRI digest string",
+        "operationId": "getDigest",
+        "parameters": [
+          {
+            "name": "digest_sri",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The SRI digest string to look up"
+          },
+          {
+            "$ref": "#/components/parameters/At-Block-Height"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response with Digest details",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DigestResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Digest not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": "Digest not found",
+                  "code": 404
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/verana/xr/v1/get": {
+      "get": {
+        "tags": [
+          "Exchange Rate"
+        ],
+        "summary": "Get Exchange Rate",
+        "description": "Retrieve a specific Exchange Rate by its ID or by asset pair",
+        "operationId": "getExchangeRate",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The Exchange Rate ID to retrieve (alternative to specifying asset pair)"
+          },
+          {
+            "name": "base_asset_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "TU",
+                "COIN",
+                "FIAT"
+              ]
+            },
+            "description": "Base asset type (alternative to specifying id)"
+          },
+          {
+            "name": "base_asset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Base asset identifier"
+          },
+          {
+            "name": "quote_asset_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "TU",
+                "COIN",
+                "FIAT"
+              ]
+            },
+            "description": "Quote asset type"
+          },
+          {
+            "name": "quote_asset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Quote asset identifier"
+          },
+          {
+            "name": "state",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            },
+            "description": "Filter by state: true for enabled, false for disabled"
+          },
+          {
+            "name": "expire_ts",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "description": "Return only if expire timestamp is greater than this value"
+          },
+          {
+            "$ref": "#/components/parameters/At-Block-Height"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response with Exchange Rate details",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExchangeRateResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Exchange Rate not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": "Exchange Rate not found",
+                  "code": 404
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/verana/xr/v1/list": {
+      "get": {
+        "tags": [
+          "Exchange Rate"
+        ],
+        "summary": "List Exchange Rates",
+        "description": "Retrieve a list of Exchange Rates with optional filtering",
+        "operationId": "listExchangeRates",
+        "parameters": [
+          {
+            "name": "base_asset_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "TU",
+                "COIN",
+                "FIAT"
+              ]
+            },
+            "description": "Filter by base asset type"
+          },
+          {
+            "name": "base_asset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Filter by base asset identifier"
+          },
+          {
+            "name": "quote_asset_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "TU",
+                "COIN",
+                "FIAT"
+              ]
+            },
+            "description": "Filter by quote asset type"
+          },
+          {
+            "name": "quote_asset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Filter by quote asset identifier"
+          },
+          {
+            "name": "state",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            },
+            "description": "Filter by state: true for enabled, false for disabled"
+          },
+          {
+            "name": "expire",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "description": "Return only if expire is greater than this timestamp"
+          },
+          {
+            "$ref": "#/components/parameters/At-Block-Height"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response with list of Exchange Rates",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExchangeRateListResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/verana/xr/v1/price": {
+      "get": {
+        "tags": [
+          "Exchange Rate"
+        ],
+        "summary": "Get Price",
+        "description": "Convert an amount from one asset to another using the current exchange rate",
+        "operationId": "getPrice",
+        "parameters": [
+          {
+            "name": "base_asset_type",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "TU",
+                "COIN",
+                "FIAT"
+              ]
+            },
+            "description": "Base asset type"
+          },
+          {
+            "name": "base_asset",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Base asset identifier"
+          },
+          {
+            "name": "quote_asset_type",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "TU",
+                "COIN",
+                "FIAT"
+              ]
+            },
+            "description": "Quote asset type"
+          },
+          {
+            "name": "quote_asset",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Quote asset identifier"
+          },
+          {
+            "name": "amount",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Amount to convert (in base asset minor units)"
+          },
+          {
+            "$ref": "#/components/parameters/At-Block-Height"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response with converted price",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PriceResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "parameters": {
+      "At-Block-Height": {
+        "name": "At-Block-Height",
+        "in": "header",
+        "required": false,
+        "description": "Header to query historical state at a specific block height. When provided, returns the state as it was when the specified block finished processing. When omitted, returns the latest indexed state. Must be a positive integer not exceeding the current indexed block height.",
+        "schema": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "schemas": {
+      "Error": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "string",
+            "description": "Error message"
+          },
+          "code": {
+            "type": "integer",
+            "description": "HTTP status code"
+          },
+          "details": {
+            "type": "string",
+            "description": "Additional error details",
+            "nullable": true
+          }
+        }
+      },
+      "TrustRegistryParamsResponse": {
+        "type": "object",
+        "properties": {
+          "params": {
+            "type": "object",
+            "properties": {
+              "trust_unit_price": {
+                "type": "string"
+              },
+              "trust_registry_trust_deposit": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      },
+      "TrustRegistry": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "did": {
+            "type": "string"
+          },
+          "controller": {
+            "type": "string"
+          },
+          "created": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "modified": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "archived": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "deposit": {
+            "type": "string"
+          },
+          "aka": {
+            "type": "string",
+            "nullable": true
+          },
+          "language": {
+            "type": "string"
+          },
+          "active_version": {
+            "type": "integer"
+          },
+          "participants": {
+            "type": "integer",
+            "description": "Current number of active participants (perm_state=ACTIVE) in this Trust Registry"
+          },
+          "active_schemas": {
+            "type": "integer",
+            "description": "Current number of active schema (not archived) in this Trust Registry"
+          },
+          "archived_schemas": {
+            "type": "integer",
+            "description": "Current number of archived schemas in this Trust Registry"
+          },
+          "weight": {
+            "type": "string",
+            "description": "Trust deposit value (sum) of the full permission tree of all the Credential Schemas of this Trust Registry since it was created. Only considers permission deposits, not trust registry or credential schema deposits."
+          },
+          "issued": {
+            "type": "integer",
+            "description": "Total issued credentials (sum) by all issuers of all the Credential Schemas of this Trust Registry since it was created"
+          },
+          "verified": {
+            "type": "integer",
+            "description": "Total verified credentials (sum) by all verifiers of all the Credential Schemas of this Trust Registry since it was created"
+          },
+          "ecosystem_slash_events": {
+            "type": "integer",
+            "description": "Total ecosystem-governance–based slash events (when an Ecosystem participant is slashed by Ecosystem governance)"
+          },
+          "ecosystem_slashed_amount": {
+            "type": "string",
+            "description": "Cumulated ecosystem-governance–based slashed amount"
+          },
+          "ecosystem_slashed_amount_repaid": {
+            "type": "string",
+            "description": "Cumulated ecosystem-governance–based slashed amount repaid by participants"
+          },
+          "network_slash_events": {
+            "type": "integer",
+            "description": "Total network-governance–based slash events (when a full Ecosystem is slashed by Verana Council)"
+          },
+          "network_slashed_amount": {
+            "type": "string",
+            "description": "Cumulated network-governance–based slashed amount"
+          },
+          "network_slashed_amount_repaid": {
+            "type": "string",
+            "description": "Cumulated network-governance–based slashed amount repaid by the ecosystem"
+          },
+          "versions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TrustRegistryVersion"
+            }
+          }
+        }
+      },
+      "TrustRegistryVersion": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "tr_id": {
+            "type": "string"
+          },
+          "created": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "version": {
+            "type": "integer"
+          },
+          "active_since": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "documents": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TrustRegistryDocument"
+            }
+          }
+        }
+      },
+      "TrustRegistryDocument": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "gfv_id": {
+            "type": "string"
+          },
+          "created": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "language": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          },
+          "digest_sri": {
+            "type": "string"
+          }
+        }
+      },
+      "TrustRegistryListResponse": {
+        "type": "object",
+        "properties": {
+          "trust_registries": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TrustRegistry"
+            }
+          }
+        }
+      },
+      "TrustRegistryResponse": {
+        "type": "object",
+        "properties": {
+          "trust_registry": {
+            "$ref": "#/components/schemas/TrustRegistry"
+          }
+        }
+      },
+      "TrustRegistryHistoryResponse": {
+        "type": "object",
+        "properties": {
+          "trust_registry": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "did": {
+                "type": "string"
+              },
+              "controller": {
+                "type": "string"
+              },
+              "created": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "modified": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "archived": {
+                "type": "string",
+                "format": "date-time",
+                "nullable": true
+              },
+              "deposit": {
+                "type": "string"
+              },
+              "aka": {
+                "type": "string",
+                "nullable": true
+              },
+              "language": {
+                "type": "string"
+              },
+              "active_version": {
+                "type": "integer"
+              },
+              "participants": {
+                "type": "integer",
+                "description": "Current number of active participants (perm_state=ACTIVE) in this Trust Registry"
+              },
+              "active_schemas": {
+                "type": "integer",
+                "description": "Current number of active schema (not archived) in this Trust Registry"
+              },
+              "archived_schemas": {
+                "type": "integer",
+                "description": "Current number of archived schemas in this Trust Registry"
+              },
+              "weight": {
+                "type": "string",
+                "description": "Trust deposit value (sum) of the full permission tree of all the Credential Schemas of this Trust Registry since it was created. Only considers permission deposits, not trust registry or credential schema deposits."
+              },
+              "issued": {
+                "type": "string",
+                "description": "Total issued credentials (sum) by all issuers of all the Credential Schemas of this Trust Registry since it was created"
+              },
+              "verified": {
+                "type": "string",
+                "description": "Total verified credentials (sum) by all verifiers of all the Credential Schemas of this Trust Registry since it was created"
+              },
+              "ecosystem_slash_events": {
+                "type": "integer",
+                "description": "Total ecosystem-governance–based slash events (when an Ecosystem participant is slashed by Ecosystem governance)"
+              },
+              "ecosystem_slashed_amount": {
+                "type": "string",
+                "description": "Cumulated ecosystem-governance–based slashed amount"
+              },
+              "ecosystem_slashed_amount_repaid": {
+                "type": "string",
+                "description": "Cumulated ecosystem-governance–based slashed amount repaid by participants"
+              },
+              "network_slash_events": {
+                "type": "integer",
+                "description": "Total network-governance–based slash events (when a full Ecosystem is slashed by Verana Council)"
+              },
+              "network_slashed_amount": {
+                "type": "string",
+                "description": "Cumulated network-governance–based slashed amount"
+              },
+              "network_slashed_amount_repaid": {
+                "type": "string",
+                "description": "Cumulated network-governance–based slashed amount repaid by the ecosystem"
+              },
+              "versions": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/TrustRegistryVersion"
+                }
+              }
+            }
+          }
+        }
+      },
+      "CredentialSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "tr_id": {
+            "type": "string"
+          },
+          "json_schema": {
+            "type": "string"
+          },
+          "deposit": {
+            "type": "string"
+          },
+          "issuer_grantor_validation_validity_period": {
+            "type": "integer"
+          },
+          "verifier_grantor_validation_validity_period": {
+            "type": "integer"
+          },
+          "issuer_validation_validity_period": {
+            "type": "integer"
+          },
+          "verifier_validation_validity_period": {
+            "type": "integer"
+          },
+          "holder_validation_validity_period": {
+            "type": "integer"
+          },
+          "issuer_perm_management_mode": {
+            "type": "string",
+            "enum": [
+              "OPEN",
+              "ECOSYSTEM",
+              "GRANTOR_VALIDATION"
+            ]
+          },
+          "verifier_perm_management_mode": {
+            "type": "string",
+            "enum": [
+              "OPEN",
+              "ECOSYSTEM",
+              "GRANTOR_VALIDATION"
+            ]
+          },
+          "archived": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "created": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "modified": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "participants": {
+            "type": "integer",
+            "description": "Current number of active participants (perm_state=ACTIVE) in this Credential Schema"
+          },
+          "weight": {
+            "type": "string",
+            "description": "Trust deposit value (sum) of the full permission tree of this schema since the schema was created"
+          },
+          "issued": {
+            "type": "string",
+            "description": "Total issued credentials (sum) by all issuers of this Credential Schema since it was created"
+          },
+          "verified": {
+            "type": "string",
+            "description": "Total verified credentials (sum) by all verifiers of this Credential Schema since it was created"
+          },
+          "ecosystem_slash_events": {
+            "type": "integer",
+            "description": "Total ecosystem-governance–based slash events (when an ecosystem participant is slashed by ecosystem governance)"
+          },
+          "ecosystem_slashed_amount": {
+            "type": "string",
+            "description": "Cumulated ecosystem-governance–based slashed amount"
+          },
+          "ecosystem_slashed_amount_repaid": {
+            "type": "string",
+            "description": "Cumulated ecosystem-governance–based slashed amount repaid by participants"
+          },
+          "network_slash_events": {
+            "type": "integer",
+            "description": "Total network-governance–based slash events (when a full Ecosystem is slashed by Verana Council)"
+          },
+          "network_slashed_amount": {
+            "type": "string",
+            "description": "Cumulated network-governance–based slashed amount"
+          },
+          "network_slashed_amount_repaid": {
+            "type": "string",
+            "description": "Cumulated network-governance–based slashed amount repaid by the ecosystem"
+          },
+          "pricing_asset_type": {
+            "type": "string",
+            "enum": [
+              "TU",
+              "COIN",
+              "FIAT"
+            ],
+            "description": "Asset type used for pricing business fees"
+          },
+          "pricing_asset": {
+            "type": "string",
+            "description": "Asset identifier for pricing (e.g. 'tu', 'uvna', 'EUR')"
+          },
+          "digest_algorithm": {
+            "type": "string",
+            "description": "Digest algorithm as defined in the Verifiable Trust spec"
+          }
+        }
+      },
+      "CredentialSchemaResponse": {
+        "type": "object",
+        "properties": {
+          "schema": {
+            "$ref": "#/components/schemas/CredentialSchema"
+          }
+        }
+      },
+      "JsonSchemaResponse": {
+        "type": "object",
+        "properties": {
+          "schema": {
+            "type": "string"
+          }
+        }
+      },
+      "CredentialSchemaListResponse": {
+        "type": "object",
+        "properties": {
+          "schemas": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CredentialSchema"
+            }
+          }
+        }
+      },
+      "CredentialSchemaHistoryResponse": {
+        "type": "object",
+        "properties": {
+          "schema": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "integer"
+              },
+              "history": {
+                "type": "array",
+                "items": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      },
+      "CredentialSchemaParamsResponse": {
+        "type": "object",
+        "properties": {
+          "params": {
+            "type": "object",
+            "properties": {
+              "credential_schema_trust_deposit": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      },
+      "Permission": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "perm_state": {
+            "type": "string",
+            "enum": [
+              "REPAID",
+              "SLASHED",
+              "REVOKED",
+              "EXPIRED",
+              "ACTIVE",
+              "FUTURE",
+              "INACTIVE"
+            ],
+            "description": "The current state of the permission, calculated based on repaid, slashed, revoked, effective_from, and effective_until fields"
+          },
+          "grantee_available_actions": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "VP_RENEW",
+                "VP_CANCEL",
+                "PERM_REVOKE",
+                "PERM_EXTEND",
+                "PERM_REPAY"
+              ]
+            },
+            "description": "List of actions available to the grantee for this permission"
+          },
+          "validator_available_actions": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "VP_SET_VALIDATED",
+                "PERM_REVOKE",
+                "PERM_EXTEND",
+                "PERM_SLASH"
+              ]
+            },
+            "description": "List of actions available to the validator for this permission"
+          },
+          "weight": {
+            "type": "string",
+            "description": "The node weight of the permission, calculated as the sum of all trust deposits of this permission and all permissions in its subtree"
+          },
+          "issued": {
+            "type": "string",
+            "description": "Number of credentials issued using this permission and its ancestors"
+          },
+          "verified": {
+            "type": "string",
+            "description": "Number of credentials verified using this permission and its ancestors"
+          },
+          "participants": {
+            "type": "integer",
+            "description": "Current number of active participants (perm_state=ACTIVE) (subtree, plus this permission if it is ACTIVE)"
+          },
+          "ecosystem_slash_events": {
+            "type": "integer",
+            "description": "Total ecosystem-governance–based slash events (when an ecosystem participant is slashed by ecosystem governance)"
+          },
+          "ecosystem_slashed_amount": {
+            "type": "string",
+            "description": "Cumulated ecosystem-governance–based slashed amount"
+          },
+          "ecosystem_slashed_amount_repaid": {
+            "type": "string",
+            "description": "Cumulated ecosystem-governance–based slashed amount repaid by participants"
+          },
+          "network_slash_events": {
+            "type": "integer",
+            "description": "Total network-governance–based slash events (when a full Ecosystem is slashed by Verana Council)"
+          },
+          "network_slashed_amount": {
+            "type": "string",
+            "description": "Cumulated network-governance–based slashed amount"
+          },
+          "network_slashed_amount_repaid": {
+            "type": "string",
+            "description": "Cumulated network-governance–based slashed amount repaid by the ecosystem"
+          },
+          "schema_id": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "ISSUER",
+              "VERIFIER",
+              "ISSUER_GRANTOR",
+              "VERIFIER_GRANTOR",
+              "ECOSYSTEM",
+              "HOLDER"
+            ]
+          },
+          "did": {
+            "type": "string",
+            "nullable": true
+          },
+          "grantee": {
+            "type": "string"
+          },
+          "created_by": {
+            "type": "string"
+          },
+          "created": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "modified": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "extended": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "extended_by": {
+            "type": "string",
+            "nullable": true
+          },
+          "slashed": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "slashed_by": {
+            "type": "string",
+            "nullable": true
+          },
+          "repaid": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "repaid_by": {
+            "type": "string",
+            "nullable": true
+          },
+          "effective_from": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "effective_until": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "revoked": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "revoked_by": {
+            "type": "string",
+            "nullable": true
+          },
+          "country": {
+            "type": "string",
+            "nullable": true
+          },
+          "validation_fees": {
+            "type": "string"
+          },
+          "issuance_fees": {
+            "type": "string"
+          },
+          "verification_fees": {
+            "type": "string"
+          },
+          "deposit": {
+            "type": "string"
+          },
+          "slashed_deposit": {
+            "type": "string"
+          },
+          "repaid_deposit": {
+            "type": "string"
+          },
+          "validator_perm_id": {
+            "type": "string",
+            "nullable": true
+          },
+          "vp_state": {
+            "type": "string",
+            "enum": [
+              "PENDING",
+              "VALIDATED",
+              "TERMINATED",
+              "VALIDATION_STATE_UNSPECIFIED"
+            ]
+          },
+          "vp_last_state_change": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "vp_current_fees": {
+            "type": "string"
+          },
+          "vp_current_deposit": {
+            "type": "string"
+          },
+          "vp_summary_digest_sri": {
+            "type": "string",
+            "nullable": true
+          },
+          "vp_exp": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "vp_validator_deposit": {
+            "type": "string"
+          },
+          "vp_term_requested": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          }
+        }
+      },
+      "PermissionResponse": {
+        "type": "object",
+        "properties": {
+          "permission": {
+            "$ref": "#/components/schemas/Permission"
+          }
+        }
+      },
+      "PermissionListResponse": {
+        "type": "object",
+        "properties": {
+          "permissions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Permission"
+            }
+          }
+        }
+      },
+      "PermissionHistoryItem": {
+        "type": "object",
+        "properties": {
+          "permission_id": {
+            "type": "string"
+          },
+          "schema_id": {
+            "type": "integer"
+          },
+          "type": {
+            "type": "string"
+          },
+          "grantee": {
+            "type": "string"
+          },
+          "event_type": {
+            "type": "string"
+          },
+          "height": {
+            "type": "integer"
+          },
+          "changes": {
+            "type": "object",
+            "nullable": true,
+            "description": "Field-level diffs for the event"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "PermissionHistoryResponse": {
+        "type": "object",
+        "properties": {
+          "history": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PermissionHistoryItem"
+            }
+          }
+        }
+      },
+      "PermissionSession": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "controller": {
+            "type": "string"
+          },
+          "agent_perm_id": {
+            "type": "string"
+          },
+          "wallet_agent_perm_id": {
+            "type": "string"
+          },
+          "authz": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "issuer_perm_id": {
+                  "type": "integer"
+                },
+                "verifier_perm_id": {
+                  "type": "integer"
+                },
+                "wallet_agent_perm_id": {
+                  "type": "integer"
+                }
+              }
+            }
+          },
+          "created": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "modified": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "PermissionSessionResponse": {
+        "type": "object",
+        "properties": {
+          "session": {
+            "$ref": "#/components/schemas/PermissionSession"
+          }
+        }
+      },
+      "PermissionSessionListResponse": {
+        "type": "object",
+        "properties": {
+          "sessions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PermissionSession"
+            }
+          }
+        }
+      },
+      "PermissionSessionHistoryItem": {
+        "type": "object",
+        "properties": {
+          "session_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "event_type": {
+            "type": "string"
+          },
+          "height": {
+            "type": "integer"
+          },
+          "controller": {
+            "type": "string"
+          },
+          "agent_perm_id": {
+            "type": "string"
+          },
+          "wallet_agent_perm_id": {
+            "type": "string"
+          },
+          "authz": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          },
+          "changes": {
+            "type": "object",
+            "nullable": true
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "PermissionSessionHistoryResponse": {
+        "type": "object",
+        "properties": {
+          "history": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PermissionSessionHistoryItem"
+            }
+          }
+        }
+      },
+      "BeneficiaryResponse": {
+        "type": "object",
+        "properties": {
+          "permissions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Permission"
+            }
+          }
+        }
+      },
+      "TrustDeposit": {
+        "type": "object",
+        "properties": {
+          "account": {
+            "type": "string",
+            "description": "Account address"
+          },
+          "share": {
+            "type": "string",
+            "description": "Current share amount"
+          },
+          "amount": {
+            "type": "string",
+            "description": "Total deposit amount"
+          },
+          "claimable": {
+            "type": "string",
+            "description": "Claimable rewards amount"
+          },
+          "slashed_deposit": {
+            "type": "string",
+            "description": "Total slashed deposit amount"
+          },
+          "repaid_deposit": {
+            "type": "string",
+            "description": "Total repaid deposit amount"
+          },
+          "last_slashed": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "Last slash event timestamp"
+          },
+          "last_repaid": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "Last repay event timestamp"
+          },
+          "slash_count": {
+            "type": "integer",
+            "description": "Number of slash events"
+          },
+          "last_repaid_by": {
+            "type": "string",
+            "description": "Account that last performed repayment"
+          }
+        }
+      },
+      "TrustDepositResponse": {
+        "type": "object",
+        "properties": {
+          "trust_deposit": {
+            "$ref": "#/components/schemas/TrustDeposit"
+          }
+        }
+      },
+      "TrustDepositParamsResponse": {
+        "type": "object",
+        "properties": {
+          "params": {
+            "type": "object",
+            "properties": {
+              "trust_deposit_rate": {
+                "type": "string",
+                "description": "Trust deposit interest rate",
+                "example": "0.200000000000000000"
+              },
+              "user_agent_reward_rate": {
+                "type": "string",
+                "description": "User agent reward rate",
+                "example": "0.200000000000000000"
+              },
+              "trust_deposit_share_value": {
+                "type": "string",
+                "description": "Value of each trust deposit share",
+                "example": "1.000000000000000000"
+              },
+              "wallet_user_agent_reward_rate": {
+                "type": "string",
+                "description": "Wallet user agent reward rate",
+                "example": "0.200000000000000000"
+              },
+              "trust_deposit_reclaim_burn_rate": {
+                "type": "string",
+                "description": "Burn rate for reclaimed trust deposits",
+                "example": "0.600000000000000000"
+              }
+            }
+          }
+        }
+      },
+      "TrustDepositHistoryItem": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "description": "History record ID"
+          },
+          "account": {
+            "type": "string",
+            "description": "Account address"
+          },
+          "share": {
+            "type": "string",
+            "description": "Share amount at this point"
+          },
+          "amount": {
+            "type": "string",
+            "description": "Deposit amount at this point"
+          },
+          "claimable": {
+            "type": "string",
+            "description": "Claimable amount at this point"
+          },
+          "slashed_deposit": {
+            "type": "string",
+            "description": "Slashed deposit at this point"
+          },
+          "repaid_deposit": {
+            "type": "string",
+            "description": "Repaid deposit at this point"
+          },
+          "last_slashed": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "Last slashed timestamp"
+          },
+          "last_repaid": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "Last repaid timestamp"
+          },
+          "slash_count": {
+            "type": "integer",
+            "description": "Slash count at this point"
+          },
+          "last_repaid_by": {
+            "type": "string",
+            "description": "Account that last repaid"
+          },
+          "event_type": {
+            "type": "string",
+            "enum": [
+              "CREATE_TRUST_DEPOSIT",
+              "ADJUST_TRUST_DEPOSIT",
+              "SLASH_TRUST_DEPOSIT",
+              "SLASH_PERM_TRUST_DEPOSIT",
+              "RECLAIM_YIELD",
+              "RECLAIM_DEPOSIT",
+              "REPAY_SLASHED"
+            ],
+            "description": "Type of event that caused this history record"
+          },
+          "height": {
+            "type": "integer",
+            "description": "Block height when this change occurred"
+          },
+          "changes": {
+            "type": "object",
+            "nullable": true,
+            "description": "Field-level diffs showing what changed"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When this history record was created"
+          }
+        }
+      },
+      "TrustDepositHistoryResponse": {
+        "type": "object",
+        "properties": {
+          "history": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TrustDepositHistoryItem"
+            }
+          }
+        }
+      },
+      "SchemaAuthorizationPolicy": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "description": "Unique identifier of the Schema Authorization Policy"
+          },
+          "schema_id": {
+            "type": "integer",
+            "description": "ID of the related Credential Schema"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "ISSUER",
+              "VERIFIER"
+            ],
+            "description": "Role this policy applies to"
+          },
+          "version": {
+            "type": "integer",
+            "description": "Policy version number"
+          },
+          "url": {
+            "type": "string",
+            "description": "URL where the policy document is published"
+          },
+          "digest_sri": {
+            "type": "string",
+            "description": "SRI digest of the policy document"
+          },
+          "created": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Creation timestamp"
+          },
+          "effective_from": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "Timestamp from which this policy is effective (null for draft)"
+          },
+          "effective_until": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "Timestamp until which this policy was effective (null if still active)"
+          },
+          "revoked": {
+            "type": "boolean",
+            "description": "Whether this policy has been revoked"
+          }
+        }
+      },
+      "SchemaAuthorizationPolicyResponse": {
+        "type": "object",
+        "properties": {
+          "policy": {
+            "$ref": "#/components/schemas/SchemaAuthorizationPolicy"
+          }
+        }
+      },
+      "SchemaAuthorizationPolicyListResponse": {
+        "type": "object",
+        "properties": {
+          "policies": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SchemaAuthorizationPolicy"
+            }
+          }
+        }
+      },
+      "PermissionParamsResponse": {
+        "type": "object",
+        "properties": {
+          "params": {
+            "type": "object",
+            "description": "Permission module parameters as key-value pairs",
+            "additionalProperties": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "Digest": {
+        "type": "object",
+        "properties": {
+          "digest_sri": {
+            "type": "string",
+            "description": "SRI digest string"
+          },
+          "created": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Timestamp when this digest was stored"
+          }
+        }
+      },
+      "DigestResponse": {
+        "type": "object",
+        "properties": {
+          "digest": {
+            "$ref": "#/components/schemas/Digest"
+          }
+        }
+      },
+      "ExchangeRate": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "description": "Exchange Rate ID"
+          },
+          "base_asset_type": {
+            "type": "string",
+            "enum": [
+              "TU",
+              "COIN",
+              "FIAT"
+            ],
+            "description": "Base asset type"
+          },
+          "base_asset": {
+            "type": "string",
+            "description": "Base asset identifier"
+          },
+          "quote_asset_type": {
+            "type": "string",
+            "enum": [
+              "TU",
+              "COIN",
+              "FIAT"
+            ],
+            "description": "Quote asset type"
+          },
+          "quote_asset": {
+            "type": "string",
+            "description": "Quote asset identifier"
+          },
+          "rate": {
+            "type": "string",
+            "description": "Exchange rate as base-10 encoded unsigned integer string"
+          },
+          "rate_scale": {
+            "type": "integer",
+            "description": "Scale factor for the rate (number of decimal places)"
+          },
+          "validity_duration": {
+            "type": "string",
+            "description": "Duration for which the rate is valid"
+          },
+          "expires": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Expiration timestamp of the current rate"
+          },
+          "state": {
+            "type": "boolean",
+            "description": "Whether this exchange rate is enabled"
+          },
+          "updated": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Last update timestamp"
+          }
+        }
+      },
+      "ExchangeRateResponse": {
+        "type": "object",
+        "properties": {
+          "exchange_rate": {
+            "$ref": "#/components/schemas/ExchangeRate"
+          }
+        }
+      },
+      "ExchangeRateListResponse": {
+        "type": "object",
+        "properties": {
+          "exchange_rates": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ExchangeRate"
+            }
+          }
+        }
+      },
+      "PriceResponse": {
+        "type": "object",
+        "properties": {
+          "price": {
+            "type": "string",
+            "description": "Converted price in quote asset minor units"
+          },
+          "base_asset_type": {
+            "type": "string",
+            "description": "Base asset type used"
+          },
+          "base_asset": {
+            "type": "string",
+            "description": "Base asset identifier used"
+          },
+          "quote_asset_type": {
+            "type": "string",
+            "description": "Quote asset type used"
+          },
+          "quote_asset": {
+            "type": "string",
+            "description": "Quote asset identifier used"
+          },
+          "amount": {
+            "type": "string",
+            "description": "Original amount that was converted"
+          },
+          "rate": {
+            "type": "string",
+            "description": "Exchange rate used for conversion"
+          },
+          "rate_scale": {
+            "type": "integer",
+            "description": "Scale factor of the rate used"
+          }
+        }
+      }
+    },
+    "responses": {
+      "BadRequest": {
+        "description": "Bad Request - Invalid parameters provided",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            },
+            "example": {
+              "error": "Invalid parameter: response_max_size must be between 1 and 100",
+              "code": 400
+            }
+          }
+        }
+      },
+      "ServerError": {
+        "description": "Internal Server Error",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            },
+            "example": {
+              "error": "Internal server error occurred",
+              "code": 500
+            }
+          }
+        }
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "Trust Registry",
+      "description": "Trust Registry management operations"
+    },
+    {
+      "name": "Credential Schema",
+      "description": "Credential Schema management operations"
+    },
+    {
+      "name": "Permissions",
+      "description": "Permission management operations"
+    },
+    {
+      "name": "TrustDeposit",
+      "description": "Trust Deposit management and operations"
+    },
+    {
+      "name": "Indexer",
+      "description": "Indexer state and changes tracking operations"
+    },
+    {
+      "name": "Metrics"
+    },
+    {
+      "name": "Activity",
+      "description": "Activity timeline operations for tracking entity changes"
+    },
+    {
+      "description": "## Real-Time Event (WebSocket)\n\n**Endpoint URLs:**\n- Local: `ws://localhost:3001/verana/indexer/v1/events`\n- Testnet: `wss://idx.testnet.verana.network/verana/indexer/v1/events`\n\n**Message Format:**\n```json\n{\n  \"type\": \"block-processed\",\n  \"height\": 123456,\n  \"timestamp\": \"2025-01-15T10:30:00Z\"\n}\n```\n\n**Event Type:** `block-processed` - Sent whenever a new block is successfully processed by the indexer. The `height` field contains the latest processed block height (ISO 8601 format with 'Z' designator).\n\n**Example:**\n```javascript\nconst ws = new WebSocket('ws://localhost:3001/verana/indexer/v1/events');\nws.onmessage = (event) => {\n  const data = JSON.parse(event.data);\n  if (data.type === 'block-processed') {\n    console.log(`Block ${data.height} processed`);\n    // Now safe to query indexer API for updated data\n  }\n};\n```"
+    },
+    {
+      "name": "Digest",
+      "description": "Digest storage and lookup operations"
+    },
+    {
+      "name": "Exchange Rate",
+      "description": "Exchange rate management and price conversion operations"
+    }
+  ]
+}

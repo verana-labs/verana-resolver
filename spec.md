@@ -51,61 +51,9 @@ It interacts **only with the Indexer**, which itself is responsible for mirrorin
 
 ## 4. Indexer Integration Requirements
 
-### 4.1 Required Indexer Methods
+[Indexer API is available here](https://api.testnet.verana.network/static/openapi.yml)
 
-The Trust Resolver relies on the following Indexer capabilities:
-
-#### 4.1.1 `GetBlockHeight`
-
-Returns the **most recent block height** fully processed by the Indexer.
-
-#### 4.1.2 `AtBlockHeight` Header
-
-All Indexer methods (except `GetBlockHeight`) MUST accept the HTTP header:
-
-```
-AtBlockHeight: <blockHeight>
-```
-
-If this header is missing where required, the Indexer MUST return an error.
-
-Semantics: return the state of the underlying data as of the given block height.
-
-#### 4.1.3 ListChanges
-
-Returns all changed entities for a given block height.
-ListChanges MUST require the AtBlockHeight header.
-
-The set of changeable entities includes (as defined in the VPR data model):
-
-- TrustRegistry
-- CredentialSchema
-- Permission
-- PermissionSession
-- GovernanceFrameworkVersion
-- GovernanceFrameworkDocument
-- TrustDeposit
-- GlobalVariables
-
-The exact JSON structure of ListChanges is defined by the Indexer, but MUST allow the Trust Resolver to identify:
-
-- entity type
-- entity identifier
-- operation type (create / update / delete, if applicable)
-
-### 4.1.4 Real-Time Event (WebSocket)
-
-to receive notifications of block processing and trigger processing.
-
-Example:
-
-```json
-{
-  "type": "block-processed",
-  "height": 123456,
-  "timestamp": "2025-01-15T10:30:00Z"
-}
-```
+Documentation in the swagger-ui: https://idx.testnet.verana.network/
 
 ## 5. Variables
 
@@ -131,7 +79,10 @@ maximum age for trust evaluation results before they MUST be re-evaluated.
 - POLL_OBJECT_CACHING_RETRY_DAYS (configurable):
 number of days during which failed dereferencing attempts are retried, once per day.
 
-Added to these variables, container MUST provide a way to configure a list of recognized VPRs (and Indexer URL) as well as, for each of these VPRs, the DID(s) of the Ecosystem(s) providing the Essential Credential Schemas that are recognized, as specified in the [verifiable-trust-spec - WL](https://verana-labs.github.io/verifiable-trust-spec/) (at the end of the spec)
+Added to these variables, container MUST provide a way to configure:
+
+- A list of recognized VPRs and how to access them (Indexer URL, RPC endpoints, Resolver endpoints), as specified in [WL-VPR](https://verana-labs.github.io/verifiable-trust-spec/).
+- For each VPR, the DID(s) of the Ecosystem(s) providing the Essential Credential Schemas that are recognized, as specified in [WL-ECS](https://verana-labs.github.io/verifiable-trust-spec/).
 
 ## 6. Consistency Model
 
@@ -143,7 +94,7 @@ When Pass1 and Pass2 both succeed for a particular block B:
 
 - lastProcessedBlock MUST be updated to B atomically with the index changes that correspond to that block.
 
-TTL-driven recalculations (see Section 14) MUST NOT change lastProcessedBlock; they operate within the current visible block snapshot.
+TTL-driven recalculations MUST NOT change lastProcessedBlock; they operate within the current visible block snapshot.
 
 ## 7. Two-Pass Processing Model
 
@@ -157,9 +108,10 @@ The ingestion pipeline is split into two logical passes per block:
 Pass1 MUST:
 
 - Fetch entities affected by the target block (using Indexer + AtBlockHeight).
-- Invalidate and reload DID Documents when required (see Section 10).
+- Invalidate and reload DID Documents when required.
 - Dereference all related VPs, VCs, JSON Schemas, and external documents.
 - Validate integrity where available (e.g., digest_sri for governance docs, Json Schema Credentials...).
+- For W3C VTCs: compute and cache the credential's `digestSRI` using the `digest_algorithm` from the corresponding `CredentialSchema` (via JCS canonicalization per Section 9.3), and fetch the matching `Digest` entry from the Indexer.
 - Populate and update the raw object graph used by trust evaluation.
 - Enforce CACHE_TTL:
   - If an object’s cache age exceeds CACHE_TTL, it MUST be re-fetched.
@@ -175,9 +127,10 @@ Pass2 MUST:
 - Evaluate trust for all DIDs / entities whose inputs changed (including TTL-driven needs).
 - Respect TRUST_TTL:
   - If a trust result is older than TRUST_TTL, it MUST be re-evaluated.
-- Apply recursive issuer resolution as per Section 11.
-- Validate issuer permissions at the credential’s issuanceBlockHeight.
-- For each DID/context, assign a trust status (e.g., trusted, partially trusted, untrusted).
+- Apply recursive trust resolution as per Section 9: **any DID involved in trust resolution** (issuer, verifier, grantor, or any other participant) MUST be verified as a Verifiable Service.
+- For W3C VTCs: validate issuer permissions at the block height corresponding to the credential's effective issuance time (determined via `digestSRI`, see Section 9.3). For AnonCreds VTCs: validate that the issuer is currently authorized.
+- Validate that each participant holds the appropriate permission (ISSUER, VERIFIER, ISSUER_GRANTOR, VERIFIER_GRANTOR) in the VPR for the corresponding `CredentialSchema`.
+- For each DID/context, assign a trust status (e.g., TRUSTED, PARTIAL, UNTRUSTED).
 - Handle missing resources by tying the evaluation to the corresponding entries in reattemptableResources.
 - Retry evaluations once per day (at most) up to POLL_OBJECT_CACHING_RETRY_DAYS when underlying resources are failing.
 
@@ -189,7 +142,7 @@ Pass2 writes the final trust state into the local index but does not affect last
 
 The Trust Resolver runs a continuous polling loop, **ideally triggered by block production**:
 
-```
+```python
 while true:
     last_started = now()
     run_ingestion_cycle()
@@ -224,7 +177,7 @@ This ensures startup is deterministic and does not block on flaky external depen
 
 Once lastProcessedBlock is set, the Trust Resolver MUST process blocks strictly in order:
 
-```
+```python
 while lastProcessedBlock < GetBlockHeight():
     target = lastProcessedBlock + 1
 
@@ -255,63 +208,62 @@ The Trust Resolver implements the Verifiable Trust model directly and MUST perfo
 
 ### 9.1 Resolution Rules
 
-Here is an interpretation of the [verifiable trust spec](https://verana-labs.github.io/verifiable-trust-spec/), aligned to Verana:
+Spec is available here: [verifiable trust spec](https://verana-labs.github.io/verifiable-trust-spec/)
 
-- a **VTC (Verifiable Trust Credential)** is **trustable** if and only if:
-  - it is cryptographically verified (signature match issuer public key)
-  - it is not revoked
-  - the issuer of the VTC had a **valid** issuer permission at the `BlockHeight` the credential was issued (must calculate digestSRI and check for its presence in indexer)
-  - the issuer of the VTC is a Verifiable Service
-  - the schema of the VTC is a trustable VTJSC (Verifiable Trust Json Schema Credential)
+### 9.2 Credential Format Awareness
 
-- a **VTP (Verifiable Trust Presentation)** is **trustable** if and only if:
-  - it is a valid linked-vp
-  - it is referring to a **trustable** VTC, which subject is the DID that signed the VTP
+The Verifiable Trust Specification supports two credential container formats, each with different trust resolution semantics:
 
-- a **VTJSC** is **trustable** if and only if:
-  - it is cryptographically verified (signature match issuer public key)
-  - it is not revoked
-  - the schema of the VTJSC is a JSON Schema that targets a CredentialSchema entry in a VPR, and its digest-sri matches. Targetted VPR network MUST be present in the container network white list
-  - the DID that issued the VTJSC is the same DID than the trust registry DID owner of the CredentialSchema entry
-  - the VTJSC MAY be present as a linked-vp in the DID document of the trust registry (if it is not present, it means new credentials cannot be issued for this schema)
+- **W3C VTCs** ([VT-CRED-W3C]): Credential signature is verified using the issuer's DID Document. The VTJSC is located directly via `credentialSchema.id`. Issuer authorization is checked at the **effective issuance time**.
+- **AnonCreds VTCs** ([VT-CRED-ANON]): Zero-knowledge proof is verified using the issuer's Credential Definition. The VTJSC is located indirectly via the Credential Definition's `relatedJsonSchemaCredentialId`. Issuer authorization is checked at **credential reception time** (as enforced by the holder's wallet per [CIT]).
 
-- an **ECSVTC (Essential Credential Schema Verifiable Trust Credential)** is **trustable** if and only if:
-  - it is a **trustable VTC**
-  - it is referring a **trustable VTJSC**
+The Trust Resolver MUST handle both formats during Pass1 (dereferencing) and Pass2 (trust evaluation).
 
-- a service is a **Verifiable Service** if and only if:
-  - it is a resolvable DID
-  - one of the 2 following cases are true:
-    - its DID Document has a **trustable VTP** of a self-issued **trustable Service ECSVTC**, AND a (**trustable Organization ECSVTC** OR a **trustable Persona ECSVTC**)
-    - its DID Document presents a **trustable Service ECSVTC** issued by another DID, AND this DID is a **Verifiable Service** that is presenting a (**trustable Organization ECSVTC** OR a **trustable Persona ECSVTC**).
+**Credential DID semantics:**
 
-At the end, for a DID to be included in the **trust index**, it MUST be a **Verifiable Service**
+- For **public credentials** (presented in a DID Document as linked-vp), the **credential subject** is always the DID of a Verifiable Service, and the **issuer** is always the DID of a Verifiable Service.
+- For **AnonCreds VTCs**, the credential claims do not necessarily contain a DID in the subject, but the **issuer** is always the DID of a Verifiable Service.
 
-### 9.2 Getting date of issuance of a credential
+### 9.3 Determining Effective Issuance Time
 
-In order to get the `issuanceBlockHeight` for a Credential:
+For **W3C VTCs**, the Trust Resolver MUST determine the effective issuance time as follows:
 
-- calculate `digest-sri` of normalized json of the credential.
-- load `CredentialIssued` from Indexer for the calculated `digest-sri` to get `issuanceBlockHeight`.
+1. **Canonicalize** the credential using [JCS (RFC 8785)](https://www.rfc-editor.org/rfc/rfc8785).
+2. **Recompute** the `digestSRI` from the canonicalized credential using the `digest_algorithm` specified in the corresponding [CredentialSchema](https://verana-labs.github.io/verifiable-trust-vpr-spec/#credentialschema).
+3. **Query** the VPR (via the Indexer) using [Get Digest](https://verana-labs.github.io/verifiable-trust-vpr-spec/#mod-di-qry-1-get-digest) to locate the corresponding digest entry.
+4. **Use** the `created` timestamp from the returned `Digest` entry as the **effective issuance time** of the credential.
 
-if no `CredentialIssued` is found, credential is not trustable.
+If the digest is not found in the VPR, the credential MUST be treated as having no verifiable issuance time and SHOULD be added to failedCredentials[].
 
-If `CredentialIssued` is found `CredentialIssued.issuanceBlockHeight` can be considered.
+For **AnonCreds VTCs**, objective issuance-time determination does not apply. Issuer authorization is verified at credential reception time by the holder's wallet ([CIT]). The Trust Resolver MUST verify that the issuer is **currently authorized** for the referenced VTJSC.
 
-> Note: this is not implemented yet in indexer. Furthermore, blockchain transaction are not implemented in the vs-agent yet. In the meantime, always consider a credential was issued when the issuer permission was valid.
+### 9.4 Resolution Required Steps
 
-### 9.3 Resolution Required Steps
+The Trust Resolver MUST implement the trust resolution requirements [TR-1] through [TR-8] defined in the [verifiable trust spec](https://verana-labs.github.io/verifiable-trust-spec/).
 
 For each DID to evaluate (DID in DID Directory, TrustRegistry DID, Permission DID, etc.):
 
-1. Evaluate if it is a **Verifiable Service** and produce a VerifiableTrustResolutionResult:
-    - verifiableTrustStatus (TRUSTED (verifiable service), UNTRUSTED (not a verifiable service)).
-    - production (true of false, as defined in `verifiablePublicRegistries`). If mixed production/not production resulting state is not production.
+1. Evaluate if it is a **Verifiable Service** (conforming to [VS-REQ]) and produce a VerifiableTrustResolutionResult:
+    - verifiableTrustStatus: TRUSTED (verifiable service), PARTIAL (some credentials valid but missing required ECS), UNTRUSTED (not a verifiable service).
+    - production (true or false). If mixed production/not production resulting state is false.
     - validCredentials[].
     - ignoredCredentials[] (invalid optional credentials).
     - failedCredentials[] (for diagnostic purposes).
     - Derived ecosystems / schemas / permissions context.
-2. Store Trust Evaluation Metadata
+2. For each credential found in the DID Document (as Linked VPs):
+    - For W3C VTCs: verify the credential signature using the issuer's DID Document.
+    - For AnonCreds VTCs: verify the zero-knowledge proof using the issuer's Credential Definition.
+    - Resolve the referenced VTJSC (directly via `credentialSchema.id` for W3C VTCs, or indirectly via the Credential Definition's `relatedJsonSchemaCredentialId` for AnonCreds VTCs).
+    - Verify the VTJSC signature and confirm it is issued by an Ecosystem DID that binds to a valid `CredentialSchema` entry in the VPR.
+    - Verify that the resolved VTJSC is **presented in the Ecosystem DID's DID Document** (as a linked-vp). The Ecosystem DID is the owner of the `CredentialSchema` entry in the VPR, and the VTJSC it presents is the authoritative schema definition. Credentials issued under a given ISSUER permission MUST reference the VTJSC published by the Ecosystem DID that owns the corresponding `CredentialSchema`.
+    - For W3C VTCs: determine the effective issuance time per Section 9.3 and verify the issuer had a valid **ISSUER** permission **at that time**.
+    - For AnonCreds VTCs: verify the issuer has a valid **ISSUER** permission **currently**.
+3. **Any DID involved in the trust resolution** (issuer, verifier, grantor, ecosystem/trust registry, or any other participant) **MUST itself be verified as a Verifiable Service** by recursively applying steps 1–2 to that DID ([TR-6]). This includes:
+    - Each credential **issuer** MUST be a Verifiable Service and hold a valid **ISSUER** permission for the corresponding `CredentialSchema`.
+    - Each **verifier** requesting credential presentations MUST be a Verifiable Service and hold a valid **VERIFIER** permission for the corresponding `CredentialSchema`. A wallet (VUA) receiving a presentation request MUST be able to query the Trust Resolver to confirm the verifier's trust status and VERIFIER permission before presenting credentials.
+    - Each **grantor** (ISSUER_GRANTOR, VERIFIER_GRANTOR) in the permission tree MUST be a Verifiable Service.
+    - Each **Ecosystem / TrustRegistry DID** MUST be a Verifiable Service. The Ecosystem DID is the trust root where recursion terminates ([TR-7]), but it is NOT exempt from Verifiable Service verification.
+4. Store Trust Evaluation Metadata
     - verifiableTrustEvaluatedAt.
     - verifiableTrustExpiresAt = verifiableTrustEvaluatedAt + TRUST_TTL.
 
@@ -324,7 +276,7 @@ If a DID meets all requirements to be **Verifiable Service**, but presents addit
 
 **Note2:**
 
-A `visitedDids` set SHOULD be used to prevent infinite recursion.
+A `visitedDids` set SHOULD be used to prevent infinite recursion during recursive issuer and verifier verification.
 
 ## 10. Local Projection Structure
 
@@ -399,7 +351,7 @@ GraphQL filters MUST support at least:
 - Filter by claims via path selectors (e.g., owner.name, address.city, products.category).
 - Filter by location (country, region, city).
 - Filter by issuer DID, verifier DID, or role.
-- Filter by trust status (trusted / partially trusted / untrusted).
+- Filter by trust status (TRUSTED / PARTIAL / UNTRUSTED).
 
 ### 11.4 Consistency
 
@@ -417,7 +369,7 @@ Implementations MAY add query arguments (e.g. asOfBlockHeight) that allow client
 - When the Trust Resolver needs such an object:
 - If now < expiresAt (and the credential is not expired), the cached version MAY be used.
 - If now >= expiresAt, the object MUST be re-fetched from its authoritative source.
-- For credentials, if the credential has expirationDate and now is beyond that date, it MUST be treated as expired regardless of CACHE_TTL. Implementations MAY still attempt a refresh if the URL might now contain a newer version, but the original credential is invalid.
+- For credentials, if the credential has `validUntil` and now is beyond that date, it MUST be treated as expired regardless of CACHE_TTL. Implementations MAY still attempt a refresh if the URL might now contain a newer version, but the original credential is invalid.
 
 ### 12.2 TRUST_TTL — Trust Evaluation Cache
 
@@ -441,7 +393,7 @@ If the retry window is exceeded, the resource MUST be considered permanently fai
 
 ## 13. Security Requirements
 
-- All dereferenced documents MUST validate integrity where possible (e.g., via digest_sri for governance framework documents, credential, pesentations signatures...).
+- All dereferenced documents MUST validate integrity where possible (e.g., via digest_sri for governance framework documents, credential, presentations signatures...).
 - All HTTP(S) requests SHOULD use TLS.
 - DID resolution MUST follow the respective DID method’s security rules (e.g., correct use of DID resolvers and method-specific verification).
 - Cached objects SHOULD be immutable with respect to their content hash; if the same URL returns content with a different hash, it SHOULD be treated as a new version and revalidated.
