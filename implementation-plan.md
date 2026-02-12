@@ -507,12 +507,6 @@ erDiagram
 
     Service {
         string did PK
-        string displayName
-        string description
-        jsonb metadata
-        string locationCountry
-        string locationRegion
-        string locationCity
         string trustStatus
         boolean production
         timestamp trustEvaluatedAt
@@ -528,10 +522,26 @@ erDiagram
     Ecosystem {
         string did PK
         bigint trustRegistryId
-        string name
-        string description
-        jsonb governanceFramework
-        decimal totalDeposit
+        string controller
+        string aka
+        string language
+        integer activeVersion
+        string deposit
+        timestamp created
+        timestamp modified
+        timestamp archived
+        integer participants
+        integer activeSchemas
+        integer archivedSchemas
+        string weight
+        string issued
+        string verified
+        integer ecosystemSlashEvents
+        string ecosystemSlashedAmount
+        string ecosystemSlashedAmountRepaid
+        integer networkSlashEvents
+        string networkSlashedAmount
+        string networkSlashedAmountRepaid
         bigint blockHeight
         timestamp createdAt
         timestamp updatedAt
@@ -591,8 +601,25 @@ erDiagram
         string vpSummaryDigestSri
         timestamp vpExp
         string vpValidatorDeposit
-        timestamp vpTermRequested
+        timestamp adjusted
+        string issuanceFeeDiscount
+        string verificationFeeDiscount
+        boolean vsOperatorAuthzEnabled
+        string vsOperatorAuthzSpendPeriod
+        string vsOperatorAuthzSpendLimit
+        boolean vsOperatorAuthzWithFeegrant
+        string vsOperatorAuthzFeeSpendLimit
         string permState
+        string weight
+        string issued
+        string verified
+        integer participants
+        integer ecosystemSlashEvents
+        string ecosystemSlashedAmount
+        string ecosystemSlashedAmountRepaid
+        integer networkSlashEvents
+        string networkSlashedAmount
+        string networkSlashedAmountRepaid
         bigint blockHeight
     }
 
@@ -614,6 +641,16 @@ erDiagram
         timestamp archived
         timestamp created
         timestamp modified
+        integer participants
+        string weight
+        string issued
+        string verified
+        integer ecosystemSlashEvents
+        string ecosystemSlashedAmount
+        string ecosystemSlashedAmountRepaid
+        integer networkSlashEvents
+        string networkSlashedAmount
+        string networkSlashedAmountRepaid
         bigint blockHeight
     }
 
@@ -660,6 +697,24 @@ erDiagram
         timestamp nextRetryAt
     }
 
+    OperatorAuthorization {
+        string authority
+        string operator
+        string[] msgTypes
+        string spendLimit
+        string feeSpendLimit
+        timestamp expiration
+        string period
+        bigint blockHeight
+    }
+
+    VSOperatorAuthorization {
+        string authority
+        string vsOperator
+        bigint[] permissions
+        bigint blockHeight
+    }
+
     Service ||--o{ Credential : "has"
     Service }o--o{ Ecosystem : "participates_in"
     Service ||--o{ Permission : "holds"
@@ -676,7 +731,7 @@ erDiagram
 ```sql
 -- Sync state tracking
 CREATE TABLE sync_state (
-    id VARCHAR(50) PRIMARY KEY DEFAULT 'main',
+    id TEXT PRIMARY KEY DEFAULT 'main',
     last_processed_block BIGINT NOT NULL DEFAULT 0,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
@@ -691,14 +746,8 @@ CREATE INDEX idx_block_timestamps_time ON block_timestamps (block_time);
 
 -- Verified services index
 CREATE TABLE services (
-    did VARCHAR(500) PRIMARY KEY,
-    display_name VARCHAR(255),
-    description TEXT,
-    metadata JSONB,
-    location_country VARCHAR(100),
-    location_region VARCHAR(100),
-    location_city VARCHAR(100),
-    trust_status VARCHAR(50) NOT NULL, -- TRUSTED, UNTRUSTED, PARTIAL
+    did TEXT PRIMARY KEY,
+    trust_status TEXT NOT NULL, -- TRUSTED, UNTRUSTED, PARTIAL
     production BOOLEAN DEFAULT FALSE,
     trust_evaluated_at TIMESTAMP WITH TIME ZONE,
     trust_expires_at TIMESTAMP WITH TIME ZONE,
@@ -710,48 +759,59 @@ CREATE TABLE services (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- Full-text search index
-CREATE INDEX idx_services_search ON services 
-    USING GIN (to_tsvector('english', 
-        coalesce(display_name, '') || ' ' || 
-        coalesce(description, '') || ' ' ||
-        coalesce(metadata::text, '')
-    ));
-
-CREATE INDEX idx_services_location ON services (location_country, location_region, location_city);
 CREATE INDEX idx_services_trust_status ON services (trust_status);
 
--- Ecosystems
+-- Ecosystems (mirrors OpenAPI TrustRegistry schema)
 CREATE TABLE ecosystems (
-    did VARCHAR(500) PRIMARY KEY,
+    did TEXT PRIMARY KEY,
     trust_registry_id BIGINT NOT NULL UNIQUE,
-    name VARCHAR(255),
-    description TEXT,
-    governance_framework JSONB,
-    total_deposit DECIMAL(30, 18),
+    controller TEXT NOT NULL,
+    aka TEXT,
+    language TEXT NOT NULL,
+    active_version INTEGER NOT NULL DEFAULT 1,
+    deposit TEXT,
+    created TIMESTAMP WITH TIME ZONE NOT NULL,
+    modified TIMESTAMP WITH TIME ZONE NOT NULL,
+    archived TIMESTAMP WITH TIME ZONE,
+    -- Indexer-computed reputation fields
+    participants INTEGER DEFAULT 0,
+    active_schemas INTEGER DEFAULT 0,
+    archived_schemas INTEGER DEFAULT 0,
+    weight TEXT,
+    issued TEXT,
+    verified TEXT,
+    ecosystem_slash_events INTEGER DEFAULT 0,
+    ecosystem_slashed_amount TEXT,
+    ecosystem_slashed_amount_repaid TEXT,
+    network_slash_events INTEGER DEFAULT 0,
+    network_slashed_amount TEXT,
+    network_slashed_amount_repaid TEXT,
     block_height BIGINT NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
+CREATE INDEX idx_ecosystems_controller ON ecosystems (controller);
+CREATE INDEX idx_ecosystems_archived ON ecosystems (archived);
+
 -- Credentials (flattened for querying)
 CREATE TABLE credentials (
-    id VARCHAR(500) PRIMARY KEY,
-    subject_did VARCHAR(500) NOT NULL REFERENCES services(did) ON DELETE CASCADE,
-    issuer_did VARCHAR(500) NOT NULL,
+    id TEXT PRIMARY KEY,
+    subject_did TEXT NOT NULL REFERENCES services(did) ON DELETE CASCADE,
+    issuer_did TEXT NOT NULL,
     issuer_perm_id BIGINT,
     schema_id BIGINT,
-    schema_name VARCHAR(255),
-    credential_format VARCHAR(50) NOT NULL, -- W3C_VTC, ANONCREDS_VTC
-    credential_type VARCHAR(255),
+    schema_name TEXT,
+    credential_format TEXT NOT NULL, -- W3C_VTC, ANONCREDS_VTC
+    credential_type TEXT,
     claims JSONB,
-    status VARCHAR(50), -- VALID, EXPIRED, REVOKED, INVALID
+    status TEXT, -- VALID, EXPIRED, REVOKED, INVALID
     issued_at TIMESTAMP WITH TIME ZONE,
     valid_until TIMESTAMP WITH TIME ZONE,
     effective_issuance_time TIMESTAMP WITH TIME ZONE, -- W3C VTC only, from Digest entry
-    digest_sri VARCHAR(255), -- W3C VTC only, computed via JCS + digest_algorithm
-    ecosystem_did VARCHAR(500) REFERENCES ecosystems(did),
-    vtjsc_id VARCHAR(500),
+    digest_sri TEXT, -- W3C VTC only, computed via JCS + digest_algorithm
+    ecosystem_did TEXT REFERENCES ecosystems(did),
+    vtjsc_id TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
@@ -764,8 +824,8 @@ CREATE INDEX idx_credentials_claims ON credentials USING GIN (claims);
 
 -- Service-Ecosystem relationships
 CREATE TABLE service_ecosystems (
-    service_did VARCHAR(500) REFERENCES services(did) ON DELETE CASCADE,
-    ecosystem_did VARCHAR(500) REFERENCES ecosystems(did) ON DELETE CASCADE,
+    service_did TEXT REFERENCES services(did) ON DELETE CASCADE,
+    ecosystem_did TEXT REFERENCES ecosystems(did) ON DELETE CASCADE,
     PRIMARY KEY (service_did, ecosystem_did)
 );
 
@@ -773,41 +833,60 @@ CREATE TABLE service_ecosystems (
 CREATE TABLE permissions (
     id BIGINT PRIMARY KEY,
     schema_id BIGINT NOT NULL,
-    type VARCHAR(50) NOT NULL,           -- ECOSYSTEM, ISSUER_GRANTOR, VERIFIER_GRANTOR, ISSUER, VERIFIER, HOLDER
-    did VARCHAR(500),
-    grantee VARCHAR(200) NOT NULL,
-    created_by VARCHAR(200),
+    type TEXT NOT NULL,           -- ECOSYSTEM, ISSUER_GRANTOR, VERIFIER_GRANTOR, ISSUER, VERIFIER, HOLDER
+    did TEXT,
+    grantee TEXT NOT NULL,
+    created_by TEXT,
     created TIMESTAMP WITH TIME ZONE NOT NULL,
     modified TIMESTAMP WITH TIME ZONE NOT NULL,
     effective_from TIMESTAMP WITH TIME ZONE,
     effective_until TIMESTAMP WITH TIME ZONE,
     revoked TIMESTAMP WITH TIME ZONE,
-    revoked_by VARCHAR(200),
+    revoked_by TEXT,
     extended TIMESTAMP WITH TIME ZONE,
-    extended_by VARCHAR(200),
+    extended_by TEXT,
     slashed TIMESTAMP WITH TIME ZONE,
-    slashed_by VARCHAR(200),
+    slashed_by TEXT,
     repaid TIMESTAMP WITH TIME ZONE,
-    repaid_by VARCHAR(200),
-    country VARCHAR(10),
-    validation_fees VARCHAR(100),
-    issuance_fees VARCHAR(100),
-    verification_fees VARCHAR(100),
-    deposit VARCHAR(100),
-    slashed_deposit VARCHAR(100),
-    repaid_deposit VARCHAR(100),
+    repaid_by TEXT,
+    country TEXT,
+    validation_fees TEXT,
+    issuance_fees TEXT,
+    verification_fees TEXT,
+    deposit TEXT,
+    slashed_deposit TEXT,
+    repaid_deposit TEXT,
     validator_perm_id BIGINT,
     -- Validation Process (VP) state
-    vp_state VARCHAR(50),                -- PENDING, VALIDATED, TERMINATED
+    vp_state TEXT,                -- PENDING, VALIDATED, TERMINATED
     vp_last_state_change TIMESTAMP WITH TIME ZONE,
-    vp_current_fees VARCHAR(100),
-    vp_current_deposit VARCHAR(100),
-    vp_summary_digest_sri VARCHAR(255),
+    vp_current_fees TEXT,
+    vp_current_deposit TEXT,
+    vp_summary_digest_sri TEXT,
     vp_exp TIMESTAMP WITH TIME ZONE,
-    vp_validator_deposit VARCHAR(100),
-    vp_term_requested TIMESTAMP WITH TIME ZONE,
+    vp_validator_deposit TEXT,
+    -- VPR spec fields
+    adjusted TIMESTAMP WITH TIME ZONE,
+    issuance_fee_discount TEXT,
+    verification_fee_discount TEXT,
+    vs_operator_authz_enabled BOOLEAN,
+    vs_operator_authz_spend_period TEXT,
+    vs_operator_authz_spend_limit TEXT,
+    vs_operator_authz_with_feegrant BOOLEAN,
+    vs_operator_authz_fee_spend_limit TEXT,
     -- Indexer-computed derived state
-    perm_state VARCHAR(50),              -- REPAID, SLASHED, REVOKED, EXPIRED, ACTIVE, FUTURE, INACTIVE
+    perm_state TEXT,              -- REPAID, SLASHED, REVOKED, EXPIRED, ACTIVE, FUTURE, INACTIVE
+    -- Indexer-computed reputation fields
+    weight TEXT,
+    issued TEXT,
+    verified TEXT,
+    participants INTEGER DEFAULT 0,
+    ecosystem_slash_events INTEGER DEFAULT 0,
+    ecosystem_slashed_amount TEXT,
+    ecosystem_slashed_amount_repaid TEXT,
+    network_slash_events INTEGER DEFAULT 0,
+    network_slashed_amount TEXT,
+    network_slashed_amount_repaid TEXT,
     block_height BIGINT NOT NULL
 );
 
@@ -823,20 +902,31 @@ CREATE TABLE credential_schemas (
     id BIGINT PRIMARY KEY,
     tr_id BIGINT NOT NULL,
     json_schema TEXT,
-    deposit VARCHAR(100),
+    deposit TEXT,
     issuer_grantor_validation_validity_period INTEGER,
     verifier_grantor_validation_validity_period INTEGER,
     issuer_validation_validity_period INTEGER,
     verifier_validation_validity_period INTEGER,
     holder_validation_validity_period INTEGER,
-    issuer_perm_management_mode VARCHAR(50), -- OPEN, ECOSYSTEM, GRANTOR_VALIDATION
-    verifier_perm_management_mode VARCHAR(50),
-    pricing_asset_type VARCHAR(20),  -- TU, COIN, FIAT (v4)
-    pricing_asset VARCHAR(50),       -- e.g. 'tu', 'uvna', 'EUR' (v4)
-    digest_algorithm VARCHAR(50),    -- algorithm for computing digestSRI (v4)
+    issuer_perm_management_mode TEXT, -- OPEN, ECOSYSTEM, GRANTOR_VALIDATION
+    verifier_perm_management_mode TEXT,
+    pricing_asset_type TEXT,  -- TU, COIN, FIAT (v4)
+    pricing_asset TEXT,       -- e.g. 'tu', 'uvna', 'EUR' (v4)
+    digest_algorithm TEXT,    -- algorithm for computing digestSRI (v4)
     archived TIMESTAMP WITH TIME ZONE,
     created TIMESTAMP WITH TIME ZONE NOT NULL,
     modified TIMESTAMP WITH TIME ZONE NOT NULL,
+    -- Indexer-computed reputation fields
+    participants INTEGER DEFAULT 0,
+    weight TEXT,
+    issued TEXT,
+    verified TEXT,
+    ecosystem_slash_events INTEGER DEFAULT 0,
+    ecosystem_slashed_amount TEXT,
+    ecosystem_slashed_amount_repaid TEXT,
+    network_slash_events INTEGER DEFAULT 0,
+    network_slashed_amount TEXT,
+    network_slashed_amount_repaid TEXT,
     block_height BIGINT NOT NULL
 );
 
@@ -844,10 +934,10 @@ CREATE TABLE credential_schemas (
 CREATE TABLE schema_authorization_policies (
     id BIGINT PRIMARY KEY,
     schema_id BIGINT NOT NULL REFERENCES credential_schemas(id),
-    role VARCHAR(20) NOT NULL,       -- ISSUER, VERIFIER
+    role TEXT NOT NULL,       -- ISSUER, VERIFIER
     version INTEGER NOT NULL,
     url TEXT NOT NULL,
-    digest_sri VARCHAR(255) NOT NULL,
+    digest_sri TEXT NOT NULL,
     created TIMESTAMP WITH TIME ZONE NOT NULL,
     effective_from TIMESTAMP WITH TIME ZONE,
     effective_until TIMESTAMP WITH TIME ZONE,
@@ -859,7 +949,7 @@ CREATE INDEX idx_sap_schema_role ON schema_authorization_policies (schema_id, ro
 
 -- DID document cache
 CREATE TABLE did_documents (
-    did VARCHAR(500) PRIMARY KEY,
+    did TEXT PRIMARY KEY,
     document JSONB NOT NULL,
     cached_at TIMESTAMP WITH TIME ZONE NOT NULL,
     expires_at TIMESTAMP WITH TIME ZONE NOT NULL
@@ -867,21 +957,21 @@ CREATE TABLE did_documents (
 
 -- Generic object cache (content stored in blob store)
 CREATE TABLE cached_objects (
-    uri VARCHAR(2000) PRIMARY KEY,
-    object_type VARCHAR(100), -- VP, VC, JSON_SCHEMA, GOVERNANCE_DOC
-    blob_key VARCHAR(500) NOT NULL, -- content-addressed key in blob store (sha256 hash)
+    uri TEXT PRIMARY KEY,
+    object_type TEXT, -- VP, VC, JSON_SCHEMA, GOVERNANCE_DOC
+    blob_key TEXT NOT NULL, -- content-addressed key in blob store (sha256 hash)
     content_size BIGINT, -- size in bytes, for monitoring
-    digest_sri VARCHAR(255),
+    digest_sri TEXT,
     cached_at TIMESTAMP WITH TIME ZONE NOT NULL,
     expires_at TIMESTAMP WITH TIME ZONE NOT NULL
 );
 
 -- Retry queue
 CREATE TABLE retry_queue (
-    id VARCHAR(500) PRIMARY KEY,
-    resource_type VARCHAR(100) NOT NULL,
-    resource_id VARCHAR(500) NOT NULL,
-    error_type VARCHAR(100),
+    id TEXT PRIMARY KEY,
+    resource_type TEXT NOT NULL,
+    resource_id TEXT NOT NULL,
+    error_type TEXT,
     error_message TEXT,
     first_failure_at TIMESTAMP WITH TIME ZONE NOT NULL,
     last_retry_at TIMESTAMP WITH TIME ZONE,
@@ -893,13 +983,41 @@ CREATE INDEX idx_retry_queue_next ON retry_queue (next_retry_at);
 
 -- DID usage reverse index
 CREATE TABLE did_usage (
-    did VARCHAR(500) NOT NULL,
-    role VARCHAR(50) NOT NULL, -- SERVICE, ISSUER, VERIFIER, ECOSYSTEM, ISSUER_GRANTOR, VERIFIER_GRANTOR, HOLDER
-    context_id VARCHAR(500), -- e.g., schema_id, ecosystem_did
+    did TEXT NOT NULL,
+    role TEXT NOT NULL, -- SERVICE, ISSUER, VERIFIER, ECOSYSTEM, ISSUER_GRANTOR, VERIFIER_GRANTOR, HOLDER
+    context_id TEXT, -- e.g., schema_id, ecosystem_did
     PRIMARY KEY (did, role, context_id)
 );
 
 CREATE INDEX idx_did_usage_did ON did_usage (did);
+
+-- Operator Authorizations
+CREATE TABLE operator_authorizations (
+    authority TEXT NOT NULL,
+    operator TEXT NOT NULL,
+    msg_types TEXT[] NOT NULL,
+    spend_limit TEXT,
+    fee_spend_limit TEXT,
+    expiration TIMESTAMP WITH TIME ZONE,
+    period TEXT,
+    block_height BIGINT NOT NULL,
+    PRIMARY KEY (authority, operator)
+);
+
+CREATE INDEX idx_operator_authz_authority ON operator_authorizations (authority);
+CREATE INDEX idx_operator_authz_operator ON operator_authorizations (operator);
+
+-- VS Operator Authorizations
+CREATE TABLE vs_operator_authorizations (
+    authority TEXT NOT NULL,
+    vs_operator TEXT NOT NULL,
+    permissions BIGINT[] NOT NULL,
+    block_height BIGINT NOT NULL,
+    PRIMARY KEY (authority, vs_operator)
+);
+
+CREATE INDEX idx_vs_operator_authz_authority ON vs_operator_authorizations (authority);
+CREATE INDEX idx_vs_operator_authz_vs_operator ON vs_operator_authorizations (vs_operator);
 ```
 
 ---
@@ -937,10 +1055,6 @@ enum PermissionType {
 # Service (Verifiable Service)
 type Service {
   did: ID!
-  displayName: String
-  description: String
-  metadata: JSON
-  location: Location
   trustStatus: TrustStatus!
   production: Boolean!
   trustEvaluatedAt: DateTime
@@ -964,29 +1078,35 @@ type ServiceConnection {
   totalCount: Int!
 }
 
-# Location
-type Location {
-  country: String
-  region: String
-  city: String
-  coordinates: Coordinates
-}
-
-type Coordinates {
-  latitude: Float
-  longitude: Float
-}
-
-# Ecosystem
+# Ecosystem (mirrors OpenAPI TrustRegistry)
 type Ecosystem {
   did: ID!
   trustRegistryId: ID!
-  name: String
-  description: String
-  governanceFramework: GovernanceFramework
-  totalDeposit: String
+  controller: String!
+  aka: String
+  language: String!
+  activeVersion: Int!
+  deposit: String
+  created: DateTime!
+  modified: DateTime!
+  archived: DateTime
+  # Indexer-computed reputation fields
+  participants: Int!
+  activeSchemas: Int!
+  archivedSchemas: Int!
+  weight: String
+  issued: String
+  verified: String
+  ecosystemSlashEvents: Int!
+  ecosystemSlashedAmount: String
+  ecosystemSlashedAmountRepaid: String
+  networkSlashEvents: Int!
+  networkSlashedAmount: String
+  networkSlashedAmountRepaid: String
+  # Resolved relations
+  versions: [TrustRegistryVersion!]!
   schemas: [CredentialSchema!]!
-  participants: ParticipantConnection!
+  participantList: ParticipantConnection!
 }
 
 type EcosystemEdge {
@@ -1000,12 +1120,24 @@ type EcosystemConnection {
   totalCount: Int!
 }
 
-# Governance Framework
-type GovernanceFramework {
-  version: String
-  url: String
-  digest: String
-  effectiveFrom: DateTime
+# Trust Registry Version (mirrors OpenAPI TrustRegistryVersion)
+type TrustRegistryVersion {
+  id: ID!
+  trId: ID!
+  created: DateTime!
+  version: Int!
+  activeSince: DateTime!
+  documents: [TrustRegistryDocument!]!
+}
+
+# Trust Registry Document (mirrors OpenAPI TrustRegistryDocument)
+type TrustRegistryDocument {
+  id: ID!
+  gfvId: ID!
+  created: DateTime!
+  language: String!
+  url: String!
+  digestSri: String!
 }
 
 # Credential Schema (mirrors indexer CredentialSchema + v4 fields)
@@ -1027,6 +1159,18 @@ type CredentialSchema {
   archived: DateTime
   created: DateTime!
   modified: DateTime!
+  # Indexer-computed reputation fields
+  participants: Int!
+  weight: String
+  issued: String
+  verified: String
+  ecosystemSlashEvents: Int!
+  ecosystemSlashedAmount: String
+  ecosystemSlashedAmountRepaid: String
+  networkSlashEvents: Int!
+  networkSlashedAmount: String
+  networkSlashedAmountRepaid: String
+  # Resolved relations
   ecosystem: Ecosystem!
   issuers: PermissionConnection!
   verifiers: PermissionConnection!
@@ -1122,11 +1266,30 @@ type Permission {
   vpExp: DateTime
   vpSummaryDigestSri: String
   vpValidatorDeposit: String
-  vpTermRequested: DateTime
+  # VPR spec fields
+  adjusted: DateTime
+  issuanceFeeDiscount: String
+  verificationFeeDiscount: String
+  vsOperatorAuthzEnabled: Boolean
+  vsOperatorAuthzSpendPeriod: String
+  vsOperatorAuthzSpendLimit: String
+  vsOperatorAuthzWithFeegrant: Boolean
+  vsOperatorAuthzFeeSpendLimit: String
   # Indexer-computed
   permState: String            # ACTIVE, FUTURE, EXPIRED, REVOKED, SLASHED, REPAID, INACTIVE
   granteeAvailableActions: [String!]!
   validatorAvailableActions: [String!]!
+  # Indexer-computed reputation fields
+  weight: String
+  issued: String
+  verified: String
+  participants: Int!
+  ecosystemSlashEvents: Int!
+  ecosystemSlashedAmount: String
+  ecosystemSlashedAmountRepaid: String
+  networkSlashEvents: Int!
+  networkSlashedAmount: String
+  networkSlashedAmountRepaid: String
   # Resolved relations
   schema: CredentialSchema!
   validator: Permission
@@ -1146,10 +1309,7 @@ type PermissionConnection {
 # Participant (issuer/verifier in ecosystem)
 type Participant {
   did: String!
-  displayName: String
   permissions: [Permission!]!
-  issuedCount: Int
-  verifiedCount: Int
 }
 
 type ParticipantEdge {
@@ -1190,6 +1350,24 @@ type SyncInfo {
   lastProcessedBlock: Int!
   indexerBlock: Int!
   syncedAt: DateTime!
+}
+
+# Operator Authorization (Delegation module)
+type OperatorAuthorization {
+  authority: String!
+  operator: String!
+  msgTypes: [String!]!
+  spendLimit: String
+  feeSpendLimit: String
+  expiration: DateTime
+  period: String
+}
+
+# VS Operator Authorization (Delegation module)
+type VSOperatorAuthorization {
+  authority: String!
+  vsOperator: String!
+  permissions: [Int!]!
 }
 ```
 
@@ -1270,14 +1448,7 @@ input ServiceFilter {
   ecosystemDid: ID
   schemaId: ID
   issuerDid: ID
-  location: LocationFilter
   claims: ClaimFilter
-}
-
-input LocationFilter {
-  country: String
-  region: String
-  city: String
 }
 
 input ClaimFilter {
@@ -1294,7 +1465,9 @@ enum ClaimOperator {
 
 input EcosystemFilter {
   did: ID
-  name: String
+  controller: String
+  aka: String
+  onlyActive: Boolean
   hasSchema: ID
 }
 
@@ -1327,7 +1500,7 @@ input ServiceOrderBy {
 }
 
 enum ServiceOrderField {
-  DISPLAY_NAME
+  DID
   TRUST_EVALUATED_AT
   CREATED_AT
 }
@@ -1338,8 +1511,8 @@ input EcosystemOrderBy {
 }
 
 enum EcosystemOrderField {
-  NAME
-  TOTAL_DEPOSIT
+  AKA
+  WEIGHT
   CREATED_AT
 }
 
@@ -1580,6 +1753,10 @@ export interface IndexerClient {
   listExchangeRates(filter?: ExchangeRateListFilter, atBlockHeight?: number): Promise<ExchangeRate[]>;
   getPrice(params: PriceParams, atBlockHeight?: number): Promise<PriceResponse>;
 
+  // Delegation (MOD-DE-QRY-1..2)
+  listOperatorAuthorizations(filter?: OperatorAuthorizationListFilter, atBlockHeight?: number): Promise<OperatorAuthorization[]>;
+  listVSOperatorAuthorizations(filter?: VSOperatorAuthorizationListFilter, atBlockHeight?: number): Promise<VSOperatorAuthorization[]>;
+
   // Indexer-specific endpoints
   listPermissionSessions(filter?: { modified_after?: string; response_max_size?: number }, atBlockHeight?: number): Promise<PermissionSession[]>;
   getPendingFlat(account: string, opts?: { response_max_size?: number; sort?: string }, atBlockHeight?: number): Promise<PendingFlatResponse>;
@@ -1753,7 +1930,7 @@ export interface SchemaAuthorizationPolicy {
 // Matches: components/schemas/Permission in openapi-indexer.json
 
 export type PermissionType = 'ISSUER' | 'VERIFIER' | 'ISSUER_GRANTOR' | 'VERIFIER_GRANTOR' | 'ECOSYSTEM' | 'HOLDER';
-export type VPState = 'PENDING' | 'VALIDATED' | 'TERMINATED' | 'VALIDATION_STATE_UNSPECIFIED';
+export type VPState = 'PENDING' | 'VALIDATED' | 'TERMINATED';
 export type PermState = 'REPAID' | 'SLASHED' | 'REVOKED' | 'EXPIRED' | 'ACTIVE' | 'FUTURE' | 'INACTIVE';
 
 export interface Permission {
@@ -1791,7 +1968,15 @@ export interface Permission {
   vp_summary_digest_sri: string | null;
   vp_exp: string | null;
   vp_validator_deposit: string;
-  vp_term_requested: string | null;
+  // VPR spec fields
+  adjusted: string | null;
+  issuance_fee_discount: string;
+  verification_fee_discount: string;
+  vs_operator_authz_enabled: boolean;
+  vs_operator_authz_spend_period: string | null;
+  vs_operator_authz_spend_limit: string | null;
+  vs_operator_authz_with_feegrant: boolean;
+  vs_operator_authz_fee_spend_limit: string | null;
   // Indexer-computed: available actions
   grantee_available_actions: string[];
   validator_available_actions: string[];
@@ -1934,6 +2119,40 @@ export interface PriceResponse {
   amount: string;
   rate: string;
   rate_scale: number;
+}
+
+// ─── Operator Authorization (Delegation module, MOD-DE-QRY-1) ─
+// Matches: components/schemas/OperatorAuthorization in openapi-indexer.json
+
+export interface OperatorAuthorization {
+  authority: string;
+  operator: string;
+  msg_types: string[];
+  spend_limit: string | null;
+  fee_spend_limit: string | null;
+  expiration: string | null;
+  period: string | null;
+}
+
+export interface OperatorAuthorizationListFilter {
+  authority?: string;
+  operator?: string;
+  response_max_size?: number;
+}
+
+// ─── VS Operator Authorization (Delegation module, MOD-DE-QRY-2) ─
+// Matches: components/schemas/VSOperatorAuthorization in openapi-indexer.json
+
+export interface VSOperatorAuthorization {
+  authority: string;
+  vs_operator: string;
+  permissions: number[];
+}
+
+export interface VSOperatorAuthorizationListFilter {
+  authority?: string;
+  vs_operator?: string;
+  response_max_size?: number;
 }
 
 // ─── History / Activity Timeline response types ─────────────
