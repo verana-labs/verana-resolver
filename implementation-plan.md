@@ -591,7 +591,12 @@ erDiagram
         string vpSummaryDigestSri
         timestamp vpExp
         string vpValidatorDeposit
-        timestamp vpTermRequested
+        timestamp adjusted
+        string issuanceFeeDiscount
+        string verificationFeeDiscount
+        boolean vsOperatorAuthzEnabled
+        string vsOperatorAuthzSpendPeriod
+        boolean vsOperatorAuthzWithFeegrant
         string permState
         bigint blockHeight
     }
@@ -805,7 +810,13 @@ CREATE TABLE permissions (
     vp_summary_digest_sri VARCHAR(255),
     vp_exp TIMESTAMP WITH TIME ZONE,
     vp_validator_deposit VARCHAR(100),
-    vp_term_requested TIMESTAMP WITH TIME ZONE,
+    -- VPR spec fields
+    adjusted TIMESTAMP WITH TIME ZONE,
+    issuance_fee_discount VARCHAR(100),
+    verification_fee_discount VARCHAR(100),
+    vs_operator_authz_enabled BOOLEAN,
+    vs_operator_authz_spend_period VARCHAR(100),
+    vs_operator_authz_with_feegrant BOOLEAN,
     -- Indexer-computed derived state
     perm_state VARCHAR(50),              -- REPAID, SLASHED, REVOKED, EXPIRED, ACTIVE, FUTURE, INACTIVE
     block_height BIGINT NOT NULL
@@ -1122,7 +1133,13 @@ type Permission {
   vpExp: DateTime
   vpSummaryDigestSri: String
   vpValidatorDeposit: String
-  vpTermRequested: DateTime
+  # VPR spec fields
+  adjusted: DateTime
+  issuanceFeeDiscount: String
+  verificationFeeDiscount: String
+  vsOperatorAuthzEnabled: Boolean
+  vsOperatorAuthzSpendPeriod: String
+  vsOperatorAuthzWithFeegrant: Boolean
   # Indexer-computed
   permState: String            # ACTIVE, FUTURE, EXPIRED, REVOKED, SLASHED, REPAID, INACTIVE
   granteeAvailableActions: [String!]!
@@ -1753,7 +1770,7 @@ export interface SchemaAuthorizationPolicy {
 // Matches: components/schemas/Permission in openapi-indexer.json
 
 export type PermissionType = 'ISSUER' | 'VERIFIER' | 'ISSUER_GRANTOR' | 'VERIFIER_GRANTOR' | 'ECOSYSTEM' | 'HOLDER';
-export type VPState = 'PENDING' | 'VALIDATED' | 'TERMINATED' | 'VALIDATION_STATE_UNSPECIFIED';
+export type VPState = 'PENDING' | 'VALIDATED' | 'TERMINATED';
 export type PermState = 'REPAID' | 'SLASHED' | 'REVOKED' | 'EXPIRED' | 'ACTIVE' | 'FUTURE' | 'INACTIVE';
 
 export interface Permission {
@@ -1791,7 +1808,13 @@ export interface Permission {
   vp_summary_digest_sri: string | null;
   vp_exp: string | null;
   vp_validator_deposit: string;
-  vp_term_requested: string | null;
+  // VPR spec fields
+  adjusted: string | null;
+  issuance_fee_discount: string;
+  verification_fee_discount: string;
+  vs_operator_authz_enabled: boolean;
+  vs_operator_authz_spend_period: string | null;
+  vs_operator_authz_with_feegrant: boolean;
   // Indexer-computed: available actions
   grantee_available_actions: string[];
   validator_available_actions: string[];
