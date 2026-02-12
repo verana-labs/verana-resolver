@@ -596,7 +596,9 @@ erDiagram
         string verificationFeeDiscount
         boolean vsOperatorAuthzEnabled
         string vsOperatorAuthzSpendPeriod
+        string vsOperatorAuthzSpendLimit
         boolean vsOperatorAuthzWithFeegrant
+        string vsOperatorAuthzFeeSpendLimit
         string permState
         bigint blockHeight
     }
@@ -663,6 +665,24 @@ erDiagram
         timestamp lastRetryAt
         int retryCount
         timestamp nextRetryAt
+    }
+
+    OperatorAuthorization {
+        string authority
+        string operator
+        string[] msgTypes
+        string spendLimit
+        string feeSpendLimit
+        timestamp expiration
+        string period
+        bigint blockHeight
+    }
+
+    VSOperatorAuthorization {
+        string authority
+        string vsOperator
+        bigint[] permissions
+        bigint blockHeight
     }
 
     Service ||--o{ Credential : "has"
@@ -816,7 +836,9 @@ CREATE TABLE permissions (
     verification_fee_discount VARCHAR(100),
     vs_operator_authz_enabled BOOLEAN,
     vs_operator_authz_spend_period VARCHAR(100),
+    vs_operator_authz_spend_limit VARCHAR(255),
     vs_operator_authz_with_feegrant BOOLEAN,
+    vs_operator_authz_fee_spend_limit VARCHAR(255),
     -- Indexer-computed derived state
     perm_state VARCHAR(50),              -- REPAID, SLASHED, REVOKED, EXPIRED, ACTIVE, FUTURE, INACTIVE
     block_height BIGINT NOT NULL
@@ -911,6 +933,34 @@ CREATE TABLE did_usage (
 );
 
 CREATE INDEX idx_did_usage_did ON did_usage (did);
+
+-- Operator Authorizations
+CREATE TABLE operator_authorizations (
+    authority VARCHAR(500) NOT NULL,
+    operator VARCHAR(500) NOT NULL,
+    msg_types TEXT[] NOT NULL,
+    spend_limit VARCHAR(255),
+    fee_spend_limit VARCHAR(255),
+    expiration TIMESTAMP WITH TIME ZONE,
+    period VARCHAR(100),
+    block_height BIGINT NOT NULL,
+    PRIMARY KEY (authority, operator)
+);
+
+CREATE INDEX idx_operator_authz_authority ON operator_authorizations (authority);
+CREATE INDEX idx_operator_authz_operator ON operator_authorizations (operator);
+
+-- VS Operator Authorizations
+CREATE TABLE vs_operator_authorizations (
+    authority VARCHAR(500) NOT NULL,
+    vs_operator VARCHAR(500) NOT NULL,
+    permissions BIGINT[] NOT NULL,
+    block_height BIGINT NOT NULL,
+    PRIMARY KEY (authority, vs_operator)
+);
+
+CREATE INDEX idx_vs_operator_authz_authority ON vs_operator_authorizations (authority);
+CREATE INDEX idx_vs_operator_authz_vs_operator ON vs_operator_authorizations (vs_operator);
 ```
 
 ---
@@ -1139,7 +1189,9 @@ type Permission {
   verificationFeeDiscount: String
   vsOperatorAuthzEnabled: Boolean
   vsOperatorAuthzSpendPeriod: String
+  vsOperatorAuthzSpendLimit: String
   vsOperatorAuthzWithFeegrant: Boolean
+  vsOperatorAuthzFeeSpendLimit: String
   # Indexer-computed
   permState: String            # ACTIVE, FUTURE, EXPIRED, REVOKED, SLASHED, REPAID, INACTIVE
   granteeAvailableActions: [String!]!
@@ -1207,6 +1259,24 @@ type SyncInfo {
   lastProcessedBlock: Int!
   indexerBlock: Int!
   syncedAt: DateTime!
+}
+
+# Operator Authorization (Delegation module)
+type OperatorAuthorization {
+  authority: String!
+  operator: String!
+  msgTypes: [String!]!
+  spendLimit: String
+  feeSpendLimit: String
+  expiration: DateTime
+  period: String
+}
+
+# VS Operator Authorization (Delegation module)
+type VSOperatorAuthorization {
+  authority: String!
+  vsOperator: String!
+  permissions: [Int!]!
 }
 ```
 
@@ -1597,6 +1667,10 @@ export interface IndexerClient {
   listExchangeRates(filter?: ExchangeRateListFilter, atBlockHeight?: number): Promise<ExchangeRate[]>;
   getPrice(params: PriceParams, atBlockHeight?: number): Promise<PriceResponse>;
 
+  // Delegation (MOD-DE-QRY-1..2)
+  listOperatorAuthorizations(filter?: OperatorAuthorizationListFilter, atBlockHeight?: number): Promise<OperatorAuthorization[]>;
+  listVSOperatorAuthorizations(filter?: VSOperatorAuthorizationListFilter, atBlockHeight?: number): Promise<VSOperatorAuthorization[]>;
+
   // Indexer-specific endpoints
   listPermissionSessions(filter?: { modified_after?: string; response_max_size?: number }, atBlockHeight?: number): Promise<PermissionSession[]>;
   getPendingFlat(account: string, opts?: { response_max_size?: number; sort?: string }, atBlockHeight?: number): Promise<PendingFlatResponse>;
@@ -1814,7 +1888,9 @@ export interface Permission {
   verification_fee_discount: string;
   vs_operator_authz_enabled: boolean;
   vs_operator_authz_spend_period: string | null;
+  vs_operator_authz_spend_limit: string | null;
   vs_operator_authz_with_feegrant: boolean;
+  vs_operator_authz_fee_spend_limit: string | null;
   // Indexer-computed: available actions
   grantee_available_actions: string[];
   validator_available_actions: string[];
@@ -1957,6 +2033,40 @@ export interface PriceResponse {
   amount: string;
   rate: string;
   rate_scale: number;
+}
+
+// ─── Operator Authorization (Delegation module, MOD-DE-QRY-1) ─
+// Matches: components/schemas/OperatorAuthorization in openapi-indexer.json
+
+export interface OperatorAuthorization {
+  authority: string;
+  operator: string;
+  msg_types: string[];
+  spend_limit: string | null;
+  fee_spend_limit: string | null;
+  expiration: string | null;
+  period: string | null;
+}
+
+export interface OperatorAuthorizationListFilter {
+  authority?: string;
+  operator?: string;
+  response_max_size?: number;
+}
+
+// ─── VS Operator Authorization (Delegation module, MOD-DE-QRY-2) ─
+// Matches: components/schemas/VSOperatorAuthorization in openapi-indexer.json
+
+export interface VSOperatorAuthorization {
+  authority: string;
+  vs_operator: string;
+  permissions: number[];
+}
+
+export interface VSOperatorAuthorizationListFilter {
+  authority?: string;
+  vs_operator?: string;
+  response_max_size?: number;
 }
 
 // ─── History / Activity Timeline response types ─────────────

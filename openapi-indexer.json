@@ -2701,6 +2701,132 @@
           }
         }
       }
+    },
+    "/verana/de/v1/authz/list": {
+      "get": {
+        "tags": [
+          "Delegation"
+        ],
+        "summary": "List Operator Authorizations",
+        "description": "Retrieve a list of Operator Authorizations with optional filtering by authority and operator",
+        "operationId": "listOperatorAuthorizations",
+        "parameters": [
+          {
+            "name": "authority",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Filter by authority group"
+          },
+          {
+            "name": "operator",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Filter by operator account"
+          },
+          {
+            "name": "response_max_size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1024,
+              "default": 64
+            },
+            "description": "Maximum number of records to return"
+          },
+          {
+            "$ref": "#/components/parameters/At-Block-Height"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response with list of Operator Authorizations",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OperatorAuthorizationListResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/verana/de/v1/vs-authz/list": {
+      "get": {
+        "tags": [
+          "Delegation"
+        ],
+        "summary": "List VS Operator Authorizations",
+        "description": "Retrieve a list of VS Operator Authorizations with optional filtering by authority and vs_operator",
+        "operationId": "listVSOperatorAuthorizations",
+        "parameters": [
+          {
+            "name": "authority",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Filter by authority group"
+          },
+          {
+            "name": "vs_operator",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Filter by VS operator account"
+          },
+          {
+            "name": "response_max_size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1024,
+              "default": 64
+            },
+            "description": "Maximum number of records to return"
+          },
+          {
+            "$ref": "#/components/parameters/At-Block-Height"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response with list of VS Operator Authorizations",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VSOperatorAuthorizationListResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -3436,9 +3562,19 @@
             "nullable": true,
             "description": "Reset period for vs_operator spend limits"
           },
+          "vs_operator_authz_spend_limit": {
+            "type": "string",
+            "nullable": true,
+            "description": "Maximum amount of funds the vs_operator is allowed to spend for this permission (DenomAmount[])"
+          },
           "vs_operator_authz_with_feegrant": {
             "type": "boolean",
             "description": "Whether feegrant is enabled for vs_operator in this permission"
+          },
+          "vs_operator_authz_fee_spend_limit": {
+            "type": "string",
+            "nullable": true,
+            "description": "Maximum total amount of fees that can be spent by vs_operator for this permission (DenomAmount[])"
           }
         }
       },
@@ -3996,6 +4132,89 @@
           }
         }
       },
+      "OperatorAuthorization": {
+        "type": "object",
+        "properties": {
+          "authority": {
+            "type": "string",
+            "description": "Authority group that granted the authorization"
+          },
+          "operator": {
+            "type": "string",
+            "description": "Operator account that received the authorization"
+          },
+          "msg_types": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "List of module message types this authorization applies to"
+          },
+          "spend_limit": {
+            "type": "string",
+            "nullable": true,
+            "description": "Maximum amount of funds the operator is allowed to spend (DenomAmount[])"
+          },
+          "fee_spend_limit": {
+            "type": "string",
+            "nullable": true,
+            "description": "Maximum total amount of fees that can be paid using this authorization (DenomAmount[])"
+          },
+          "expiration": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "Timestamp after which the authorization is no longer valid"
+          },
+          "period": {
+            "type": "string",
+            "nullable": true,
+            "description": "Reset period for spend_limit and fee_spend_limit"
+          }
+        }
+      },
+      "OperatorAuthorizationListResponse": {
+        "type": "object",
+        "properties": {
+          "authorizations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OperatorAuthorization"
+            }
+          }
+        }
+      },
+      "VSOperatorAuthorization": {
+        "type": "object",
+        "properties": {
+          "authority": {
+            "type": "string",
+            "description": "Authority group that granted the authorization"
+          },
+          "vs_operator": {
+            "type": "string",
+            "description": "VS operator account that received the authorization"
+          },
+          "permissions": {
+            "type": "array",
+            "items": {
+              "type": "integer"
+            },
+            "description": "Permission IDs for which this authorization is granted"
+          }
+        }
+      },
+      "VSOperatorAuthorizationListResponse": {
+        "type": "object",
+        "properties": {
+          "authorizations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/VSOperatorAuthorization"
+            }
+          }
+        }
+      },
       "PriceResponse": {
         "type": "object",
         "properties": {
@@ -4095,6 +4314,10 @@
     },
     {
       "description": "## Real-Time Event (WebSocket)\n\n**Endpoint URLs:**\n- Local: `ws://localhost:3001/verana/indexer/v1/events`\n- Testnet: `wss://idx.testnet.verana.network/verana/indexer/v1/events`\n\n**Message Format:**\n```json\n{\n  \"type\": \"block-processed\",\n  \"height\": 123456,\n  \"timestamp\": \"2025-01-15T10:30:00Z\"\n}\n```\n\n**Event Type:** `block-processed` - Sent whenever a new block is successfully processed by the indexer. The `height` field contains the latest processed block height (ISO 8601 format with 'Z' designator).\n\n**Example:**\n```javascript\nconst ws = new WebSocket('ws://localhost:3001/verana/indexer/v1/events');\nws.onmessage = (event) => {\n  const data = JSON.parse(event.data);\n  if (data.type === 'block-processed') {\n    console.log(`Block ${data.height} processed`);\n    // Now safe to query indexer API for updated data\n  }\n};\n```"
+    },
+    {
+      "name": "Delegation",
+      "description": "Operator and VS Operator authorization management"
     },
     {
       "name": "Digest",
