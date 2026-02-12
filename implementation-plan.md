@@ -10,7 +10,7 @@
 
 ## 1. Executive Summary
 
-This document outlines the implementation plan for the **Verana Trust Resolver Container** in TypeScript. The resolver is a core infrastructure component that ingests state from the Verana Indexer, resolves DIDs, dereferences verifiable credentials, validates trust according to the Verifiable Trust Specification, and exposes a GraphQL API for querying trusted services and ecosystems.
+This document outlines the implementation plan for the **Verana Trust Resolver Container** in TypeScript. The resolver is a core infrastructure component that ingests state from the Verana Indexer (REST API defined in `openapi-indexer.json`), resolves DIDs, dereferences verifiable credentials, validates trust according to the Verifiable Trust Specification, and exposes a GraphQL API for querying trusted services and ecosystems.
 
 ### Key Design Principles
 
@@ -242,7 +242,9 @@ verana-resolver/
 │   │   │   │   ├── ecosystem.entity.ts
 │   │   │   │   ├── credential.entity.ts
 │   │   │   │   ├── credential-schema.entity.ts
+│   │   │   │   ├── schema-authorization-policy.entity.ts
 │   │   │   │   ├── permission.entity.ts
+│   │   │   │   ├── permission-session.entity.ts
 │   │   │   │   ├── did-document.entity.ts
 │   │   │   │   ├── block-timestamp.entity.ts
 │   │   │   │   ├── did-usage.entity.ts
@@ -309,15 +311,14 @@ sequenceDiagram
         
         alt lastBlock == null (Initial Sync per spec §8.2)
             Note over SyncManager,Indexer: Bulk fetch all entities at currentHeight
-            SyncManager->>Indexer: getDIDDirectory(atBlockHeight: currentHeight)
-            SyncManager->>Indexer: getAllTrustRegistries(atBlockHeight: currentHeight)
+            SyncManager->>Indexer: listTrustRegistries(atBlockHeight: currentHeight)
+            SyncManager->>Indexer: listCredentialSchemas(atBlockHeight: currentHeight)
+            SyncManager->>Indexer: listPermissions(atBlockHeight: currentHeight)
             Indexer-->>SyncManager: allEntities
 
             SyncManager->>Pass1: processAll(allEntities, currentHeight)
             Pass1->>Pass1: dereferenceDIDs()
             Pass1->>Pass1: dereferenceLinkedVPs()
-            Pass1->>Indexer: listPermissions(did) for each DID
-            Indexer-->>Pass1: permissions[]
             Pass1->>Store: upsert permissions + did_usage
             Pass1->>Cache: store(objects)
             Pass1->>RetryMgr: trackFailures(pass1Failures)
@@ -341,9 +342,7 @@ sequenceDiagram
                 Pass1->>Cache: invalidate(changedDIDs)
                 Pass1->>Pass1: dereferenceDIDs()
                 Pass1->>Pass1: dereferenceLinkedVPs()
-                Pass1->>Indexer: listPermissions(did) for each affected DID
-                Indexer-->>Pass1: permissions[]
-                Pass1->>Store: upsert permissions + did_usage
+                Pass1->>Store: upsert changed entities + did_usage
                 Pass1->>Cache: store(objects)
                 Pass1-->>SyncManager: pass1Result
 
@@ -560,33 +559,76 @@ erDiagram
 
     Permission {
         bigint id PK
-        bigint schemaId
-        string did
+        bigint schemaId FK
         string type
-        string authorityAddress
-        bigint validatorPermId
+        string did
+        string grantee
+        string createdBy
+        timestamp created
+        timestamp modified
         timestamp effectiveFrom
         timestamp effectiveUntil
-        string status
-        timestamp revokedAt
-        timestamp slashedAt
-        decimal deposit
+        timestamp revoked
+        string revokedBy
+        timestamp extended
+        string extendedBy
+        timestamp slashed
+        string slashedBy
+        timestamp repaid
+        string repaidBy
+        string country
+        string validationFees
+        string issuanceFees
+        string verificationFees
+        string deposit
+        string slashedDeposit
+        string repaidDeposit
+        bigint validatorPermId FK
+        string vpState
+        timestamp vpLastStateChange
+        string vpCurrentFees
+        string vpCurrentDeposit
+        string vpSummaryDigestSri
+        timestamp vpExp
+        string vpValidatorDeposit
+        timestamp vpTermRequested
+        string permState
         bigint blockHeight
-        timestamp createdAt
-        timestamp updatedAt
     }
 
     CredentialSchema {
         bigint id PK
-        bigint trustRegistryId FK
-        string name
-        jsonb jsonSchema
+        bigint trId FK
+        text jsonSchema
+        string deposit
+        integer issuerGrantorValidationValidityPeriod
+        integer verifierGrantorValidationValidityPeriod
+        integer issuerValidationValidityPeriod
+        integer verifierValidationValidityPeriod
+        integer holderValidationValidityPeriod
+        string issuerPermManagementMode
+        string verifierPermManagementMode
+        string pricingAssetType
+        string pricingAsset
         string digestAlgorithm
-        string issuerMode
-        string verifierMode
+        timestamp archived
+        timestamp created
+        timestamp modified
         bigint blockHeight
-        timestamp createdAt
-        timestamp updatedAt
+    }
+
+    SchemaAuthorizationPolicy {
+        bigint id PK
+        bigint schemaId FK
+        string role
+        integer version
+        string url
+        string digestSri
+        timestamp created
+        timestamp effectiveFrom
+        timestamp effectiveUntil
+        boolean revoked
+        bigint blockHeight
     }
 
     DIDDocument {
@@ -623,6 +665,7 @@ erDiagram
     Service ||--o{ Permission : "holds"
     Ecosystem ||--o{ CredentialSchema : "defines"
     CredentialSchema ||--o{ Permission : "has"
+    CredentialSchema ||--o{ SchemaAuthorizationPolicy : "has"
     Permission }o--o| Permission : "validated_by"
     Credential }o--|| Permission : "issued_under"
     Credential }o--o| Ecosystem : "belongs_to"
@@ -726,43 +769,93 @@ CREATE TABLE service_ecosystems (
     PRIMARY KEY (service_did, ecosystem_did)
 );
 
--- Permissions cache
+-- Permissions (mirrors indexer Permission schema)
 CREATE TABLE permissions (
     id BIGINT PRIMARY KEY,
     schema_id BIGINT NOT NULL,
+    type VARCHAR(50) NOT NULL,           -- ECOSYSTEM, ISSUER_GRANTOR, VERIFIER_GRANTOR, ISSUER, VERIFIER, HOLDER
     did VARCHAR(500),
-    permission_type VARCHAR(50), -- ECOSYSTEM, ISSUER_GRANTOR, VERIFIER_GRANTOR, ISSUER, VERIFIER, HOLDER
-    authority_address VARCHAR(100),
-    validator_perm_id BIGINT,
+    grantee VARCHAR(200) NOT NULL,
+    created_by VARCHAR(200),
+    created TIMESTAMP WITH TIME ZONE NOT NULL,
+    modified TIMESTAMP WITH TIME ZONE NOT NULL,
     effective_from TIMESTAMP WITH TIME ZONE,
     effective_until TIMESTAMP WITH TIME ZONE,
-    status VARCHAR(50), -- ACTIVE, REVOKED, SLASHED, EXPIRED
-    revoked_at TIMESTAMP WITH TIME ZONE, -- when revoked (null if never revoked)
-    slashed_at TIMESTAMP WITH TIME ZONE, -- when slashed (null if never slashed)
-    deposit DECIMAL(30, 18), -- trust deposit amount (from Indexer)
-    block_height BIGINT NOT NULL,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+    revoked TIMESTAMP WITH TIME ZONE,
+    revoked_by VARCHAR(200),
+    extended TIMESTAMP WITH TIME ZONE,
+    extended_by VARCHAR(200),
+    slashed TIMESTAMP WITH TIME ZONE,
+    slashed_by VARCHAR(200),
+    repaid TIMESTAMP WITH TIME ZONE,
+    repaid_by VARCHAR(200),
+    country VARCHAR(10),
+    validation_fees VARCHAR(100),
+    issuance_fees VARCHAR(100),
+    verification_fees VARCHAR(100),
+    deposit VARCHAR(100),
+    slashed_deposit VARCHAR(100),
+    repaid_deposit VARCHAR(100),
+    validator_perm_id BIGINT,
+    -- Validation Process (VP) state
+    vp_state VARCHAR(50),                -- PENDING, VALIDATED, TERMINATED
+    vp_last_state_change TIMESTAMP WITH TIME ZONE,
+    vp_current_fees VARCHAR(100),
+    vp_current_deposit VARCHAR(100),
+    vp_summary_digest_sri VARCHAR(255),
+    vp_exp TIMESTAMP WITH TIME ZONE,
+    vp_validator_deposit VARCHAR(100),
+    vp_term_requested TIMESTAMP WITH TIME ZONE,
+    -- Indexer-computed derived state
+    perm_state VARCHAR(50),              -- REPAID, SLASHED, REVOKED, EXPIRED, ACTIVE, FUTURE, INACTIVE
+    block_height BIGINT NOT NULL
 );
 
 CREATE INDEX idx_permissions_did ON permissions (did);
+CREATE INDEX idx_permissions_grantee ON permissions (grantee);
 CREATE INDEX idx_permissions_schema ON permissions (schema_id);
-CREATE INDEX idx_permissions_type ON permissions (permission_type);
-CREATE INDEX idx_permissions_status ON permissions (status);
+CREATE INDEX idx_permissions_type ON permissions (type);
+CREATE INDEX idx_permissions_perm_state ON permissions (perm_state);
+CREATE INDEX idx_permissions_vp_state ON permissions (vp_state);
 
--- Credential schemas
+-- Credential schemas (mirrors indexer CredentialSchema schema)
 CREATE TABLE credential_schemas (
     id BIGINT PRIMARY KEY,
-    trust_registry_id BIGINT NOT NULL,
-    name VARCHAR(255),
-    json_schema JSONB,
-    digest_algorithm VARCHAR(50), -- algorithm for computing digestSRI (from VPR CredentialSchema)
-    issuer_mode VARCHAR(50),
-    verifier_mode VARCHAR(50),
-    block_height BIGINT NOT NULL,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+    tr_id BIGINT NOT NULL,
+    json_schema TEXT,
+    deposit VARCHAR(100),
+    issuer_grantor_validation_validity_period INTEGER,
+    verifier_grantor_validation_validity_period INTEGER,
+    issuer_validation_validity_period INTEGER,
+    verifier_validation_validity_period INTEGER,
+    holder_validation_validity_period INTEGER,
+    issuer_perm_management_mode VARCHAR(50), -- OPEN, ECOSYSTEM, GRANTOR_VALIDATION
+    verifier_perm_management_mode VARCHAR(50),
+    pricing_asset_type VARCHAR(20),  -- TU, COIN, FIAT (v4)
+    pricing_asset VARCHAR(50),       -- e.g. 'tu', 'uvna', 'EUR' (v4)
+    digest_algorithm VARCHAR(50),    -- algorithm for computing digestSRI (v4)
+    archived TIMESTAMP WITH TIME ZONE,
+    created TIMESTAMP WITH TIME ZONE NOT NULL,
+    modified TIMESTAMP WITH TIME ZONE NOT NULL,
+    block_height BIGINT NOT NULL
 );
+
+-- Schema Authorization Policies (v4 new — MOD-CS-QRY-5/6)
+CREATE TABLE schema_authorization_policies (
+    id BIGINT PRIMARY KEY,
+    schema_id BIGINT NOT NULL REFERENCES credential_schemas(id),
+    role VARCHAR(20) NOT NULL,       -- ISSUER, VERIFIER
+    version INTEGER NOT NULL,
+    url TEXT NOT NULL,
+    digest_sri VARCHAR(255) NOT NULL,
+    created TIMESTAMP WITH TIME ZONE NOT NULL,
+    effective_from TIMESTAMP WITH TIME ZONE,
+    effective_until TIMESTAMP WITH TIME ZONE,
+    revoked BOOLEAN DEFAULT FALSE,
+    block_height BIGINT NOT NULL
+);
+
+CREATE INDEX idx_sap_schema_role ON schema_authorization_policies (schema_id, role);
 
 -- DID document cache
 CREATE TABLE did_documents (
@@ -801,7 +894,7 @@ CREATE INDEX idx_retry_queue_next ON retry_queue (next_retry_at);
 -- DID usage reverse index
 CREATE TABLE did_usage (
     did VARCHAR(500) NOT NULL,
-    role VARCHAR(50) NOT NULL, -- SERVICE, ISSUER, VERIFIER, ECOSYSTEM, GRANTOR, ISSUER_GRANTOR, VERIFIER_GRANTOR
+    role VARCHAR(50) NOT NULL, -- SERVICE, ISSUER, VERIFIER, ECOSYSTEM, ISSUER_GRANTOR, VERIFIER_GRANTOR, HOLDER
     context_id VARCHAR(500), -- e.g., schema_id, ecosystem_did
     PRIMARY KEY (did, role, context_id)
 );
@@ -915,17 +1008,43 @@ type GovernanceFramework {
   effectiveFrom: DateTime
 }
 
-# Credential Schema
+# Credential Schema (mirrors indexer CredentialSchema + v4 fields)
 type CredentialSchema {
   id: ID!
-  name: String!
-  jsonSchema: JSON!
-  digestAlgorithm: String
-  issuerMode: String!
-  verifierMode: String!
+  trId: ID!
+  jsonSchema: String
+  deposit: String
+  issuerGrantorValidationValidityPeriod: Int
+  verifierGrantorValidationValidityPeriod: Int
+  issuerValidationValidityPeriod: Int
+  verifierValidationValidityPeriod: Int
+  holderValidationValidityPeriod: Int
+  issuerPermManagementMode: String!
+  verifierPermManagementMode: String!
+  pricingAssetType: String       # TU, COIN, FIAT (v4)
+  pricingAsset: String           # e.g. 'tu', 'uvna', 'EUR' (v4)
+  digestAlgorithm: String        # v4
+  archived: DateTime
+  created: DateTime!
+  modified: DateTime!
   ecosystem: Ecosystem!
   issuers: PermissionConnection!
   verifiers: PermissionConnection!
+  authorizationPolicies: [SchemaAuthorizationPolicy!]!
+}
+
+# Schema Authorization Policy (v4 new)
+type SchemaAuthorizationPolicy {
+  id: ID!
+  schemaId: ID!
+  role: String!                  # ISSUER, VERIFIER
+  version: Int!
+  url: String!
+  digestSri: String!
+  created: DateTime!
+  effectiveFrom: DateTime
+  effectiveUntil: DateTime
+  revoked: Boolean!
 }
 
 # Credential format enum
@@ -967,20 +1086,50 @@ type CredentialConnection {
   totalCount: Int!
 }
 
-# Permission
+# Permission (mirrors indexer Permission schema)
 type Permission {
   id: ID!
-  did: String!
+  schemaId: ID!
   type: PermissionType!
-  schema: CredentialSchema!
+  did: String
+  grantee: String!
+  createdBy: String
+  created: DateTime!
+  modified: DateTime!
   effectiveFrom: DateTime
   effectiveUntil: DateTime
-  status: String!
-  revokedAt: DateTime
-  slashedAt: DateTime
+  revoked: DateTime
+  revokedBy: String
+  slashed: DateTime
+  slashedBy: String
+  repaid: DateTime
+  repaidBy: String
+  extended: DateTime
+  extendedBy: String
+  country: String
+  deposit: String
+  slashedDeposit: String
+  repaidDeposit: String
+  validationFees: String
+  issuanceFees: String
+  verificationFees: String
+  validatorPermId: ID
+  # Validation Process state
+  vpState: String              # PENDING, VALIDATED, TERMINATED
+  vpLastStateChange: DateTime
+  vpCurrentFees: String
+  vpCurrentDeposit: String
+  vpExp: DateTime
+  vpSummaryDigestSri: String
+  vpValidatorDeposit: String
+  vpTermRequested: DateTime
+  # Indexer-computed
+  permState: String            # ACTIVE, FUTURE, EXPIRED, REVOKED, SLASHED, REPAID, INACTIVE
+  granteeAvailableActions: [String!]!
+  validatorAvailableActions: [String!]!
+  # Resolved relations
+  schema: CredentialSchema!
   validator: Permission
-  issuedCount: Int
-  verifiedCount: Int
 }
 
 type PermissionEdge {
@@ -1161,10 +1310,14 @@ input CredentialFilter {
 
 input PermissionQueryFilter {
   did: ID
+  grantee: ID
   schemaId: ID
   type: PermissionType
   ecosystemDid: ID
-  status: String  # ACTIVE, REVOKED, SLASHED, EXPIRED
+  vpState: String              # PENDING, VALIDATED, TERMINATED
+  permState: String            # ACTIVE, FUTURE, EXPIRED, REVOKED, SLASHED, REPAID, INACTIVE
+  country: String
+  validatorPermId: ID
 }
 
 # Order by
@@ -1372,113 +1525,507 @@ export interface VTJSCValidationResult {
 
 ### 9.3 Indexer Client Types
 
+> All types below mirror the schemas defined in `openapi-indexer.json`.
+> Field names use `snake_case` to match the indexer REST API exactly, except `IndexerStatus` which uses camelCase as returned by the `/status` endpoint.
+
 ```typescript
 // packages/indexer-client/src/types.ts
 
+// ─── Client Interface ────────────────────────────────────────
+// Maps to the indexer REST API endpoints in openapi-indexer.json
+
 export interface IndexerClient {
+  // Indexer-specific
   getBlockHeight(): Promise<number>;
-  
-  getBlockTimestamp(blockHeight: number): Promise<string>; // ISO timestamp of the block
-  
-  listChanges(blockHeight: number): Promise<EntityChange[]>;
-  
-  getTrustRegistry(id: number, atBlockHeight?: number): Promise<TrustRegistry>;
-  
-  getCredentialSchema(id: number, atBlockHeight?: number): Promise<CredentialSchema>;
-  
-  getPermission(id: number, atBlockHeight?: number): Promise<Permission>;
-  
-  listPermissions(filter: PermissionFilter, atBlockHeight?: number): Promise<Permission[]>;
-  
-  getDIDDirectory(atBlockHeight?: number): Promise<DIDDirectoryEntry[]>;
-  
-  // Digest module — for W3C VTC effective issuance time determination
-  getDigest(digestSri: string, schemaId: number): Promise<DigestEntry | null>;
-  
-  // Permission statistics (issuedCount, verifiedCount per permission)
-  getPermissionStats(permissionId: number): Promise<PermissionStats>;
+  getVersion(): Promise<{ version: string }>;
+  getStatus(): Promise<IndexerStatus>;
+  listChanges(blockHeight: number): Promise<{ block_height: number; activity: EntityChange[] }>;
+
+  // Trust Registry (MOD-TR-QRY-1..3)
+  getTrustRegistry(id: string, opts?: { active_gf_only?: boolean; preferred_language?: string; atBlockHeight?: number }): Promise<TrustRegistry>;
+  listTrustRegistries(filter?: TrustRegistryFilter, atBlockHeight?: number): Promise<TrustRegistry[]>;
+  getTrustRegistryParams(atBlockHeight?: number): Promise<Record<string, string>>;
+
+  // Credential Schema (MOD-CS-QRY-1..6)
+  getCredentialSchema(id: string, atBlockHeight?: number): Promise<CredentialSchema>;
+  renderJsonSchema(id: string, atBlockHeight?: number): Promise<string>;
+  listCredentialSchemas(filter?: CredentialSchemaFilter, atBlockHeight?: number): Promise<CredentialSchema[]>;
+  getCredentialSchemaParams(atBlockHeight?: number): Promise<Record<string, string>>;
+  getSchemaAuthorizationPolicy(id: string, atBlockHeight?: number): Promise<SchemaAuthorizationPolicy>;
+  listSchemaAuthorizationPolicies(schemaId: string, role: 'ISSUER' | 'VERIFIER', atBlockHeight?: number): Promise<SchemaAuthorizationPolicy[]>;
+
+  // Permission (MOD-PERM-QRY-1..6)
+  getPermission(id: string, atBlockHeight?: number): Promise<Permission>;
+  listPermissions(filter?: PermissionFilter, atBlockHeight?: number): Promise<Permission[]>;
+  findBeneficiaries(issuerPermId: string, verifierPermId: string, atBlockHeight?: number): Promise<BeneficiaryResponse>;
+  getPermissionSession(id: string, atBlockHeight?: number): Promise<PermissionSession>;
+  getPermissionParams(atBlockHeight?: number): Promise<Record<string, string>>;
+
+  // Trust Deposit (MOD-TD-QRY-1..2)
+  getTrustDeposit(account: string, atBlockHeight?: number): Promise<TrustDeposit>;
+  getTrustDepositParams(atBlockHeight?: number): Promise<Record<string, string>>;
+
+  // History / Activity Timeline endpoints
+  getTrustRegistryHistory(id: string, opts?: { response_max_size?: number; transaction_timestamp_older_than?: string }, atBlockHeight?: number): Promise<ActivityTimelineResponse>;
+  getCredentialSchemaHistory(id: string, opts?: { response_max_size?: number; transaction_timestamp_older_than?: string }, atBlockHeight?: number): Promise<CredentialSchemaHistoryResponse>;
+  getPermissionHistory(id: string, opts?: { response_max_size?: number; transaction_timestamp_older_than?: string }, atBlockHeight?: number): Promise<ActivityTimelineResponse>;
+  getPermissionSessionHistory(id: string, atBlockHeight?: number): Promise<PermissionSessionHistoryResponse>;
+  getTrustDepositHistory(account: string, opts?: { response_max_size?: number; transaction_timestamp_older_than?: string }, atBlockHeight?: number): Promise<ActivityTimelineResponse>;
+
+  // Digest (MOD-DI-QRY-1)
+  getDigest(digestSri: string, atBlockHeight?: number): Promise<DigestEntry | null>;
+
+  // Exchange Rate (MOD-XR-QRY-1..3)
+  getExchangeRate(filter: ExchangeRateGetFilter, atBlockHeight?: number): Promise<ExchangeRate>;
+  listExchangeRates(filter?: ExchangeRateListFilter, atBlockHeight?: number): Promise<ExchangeRate[]>;
+  getPrice(params: PriceParams, atBlockHeight?: number): Promise<PriceResponse>;
+
+  // Indexer-specific endpoints
+  listPermissionSessions(filter?: { modified_after?: string; response_max_size?: number }, atBlockHeight?: number): Promise<PermissionSession[]>;
+  getPendingFlat(account: string, opts?: { response_max_size?: number; sort?: string }, atBlockHeight?: number): Promise<PendingFlatResponse>;
+  getGlobalMetrics(atBlockHeight?: number): Promise<GlobalMetricsResponse>;
 }
 
-export interface DigestEntry {
-  id: number;
-  schemaId: number;
-  digestSri: string;
-  creator: string;
-  created: string; // ISO timestamp — this is the effective issuance time
+// ─── Entity Change (from /indexer/v1/changes) ────────────────
+
+export interface IndexerStatus {
+  isRunning: boolean;
+  isCrawling: boolean;
+  stoppedAt?: string;
+  stoppedReason?: string;
+  lastError?: {
+    message: string;
+    stack?: string;
+    timestamp: string;
+    service?: string;
+  };
 }
 
 export interface EntityChange {
-  entityType: 'TrustRegistry' | 'CredentialSchema' | 'Permission' | 'DIDDirectory';
-  entityId: string | number;
-  changeType: 'CREATE' | 'UPDATE' | 'DELETE';
-  blockHeight: number;
+  entity_type: string;          // e.g. 'TrustRegistry', 'CredentialSchema', 'Permission', etc.
+  entity_id: string;
+  msg: string;                  // e.g. 'CreateTrustRegistry', 'UpdatePermission'
+  block_height: number;
+  timestamp: string;
+  account: string;
+  changes: Record<string, { old: unknown; new: unknown }> | null;
 }
+
+// ─── Trust Registry ──────────────────────────────────────────
+// Matches: components/schemas/TrustRegistry in openapi-indexer.json
 
 export interface TrustRegistry {
-  id: number;
+  id: string;
   did: string;
-  name: string;
-  governanceFramework: GovernanceFrameworkVersion;
-  authority: string;
-  created: string;
+  controller: string;                   // v4 spec: "authority"
+  created: string;                       // ISO 8601
   modified: string;
-  archived?: string;
+  archived: string | null;
+  deposit: string;
+  aka: string | null;
+  language: string;
+  active_version: number;
+  // Nested governance framework
+  versions: TrustRegistryVersion[];
+  // Indexer-computed reputation fields
+  participants: number;
+  active_schemas: number;
+  archived_schemas: number;
+  weight: string;
+  issued: number;
+  verified: number;
+  ecosystem_slash_events: number;
+  ecosystem_slashed_amount: string;
+  ecosystem_slashed_amount_repaid: string;
+  network_slash_events: number;
+  network_slashed_amount: string;
+  network_slashed_amount_repaid: string;
 }
 
-export interface Permission {
-  id: number;
-  schemaId: number;
-  did: string;
-  type: string; // ECOSYSTEM, ISSUER_GRANTOR, VERIFIER_GRANTOR, ISSUER, VERIFIER, HOLDER
-  authority: string;
-  validatorPermId?: number;
-  effectiveFrom?: string;
-  effectiveUntil?: string;
-  status: string; // ACTIVE, REVOKED, SLASHED, EXPIRED
-  revoked?: string;
-  slashed?: string;
-  deposit: string;
+export interface TrustRegistryVersion {
+  id: string;
+  tr_id: string;
+  created: string;
+  version: number;
+  active_since: string;
+  documents: TrustRegistryDocument[];
 }
+
+export interface TrustRegistryDocument {
+  id: string;
+  gfv_id: string;
+  created: string;
+  language: string;
+  url: string;
+  digest_sri: string;
+}
+
+export interface TrustRegistryFilter {
+  active_gf_only?: boolean;
+  preferred_language?: string;
+  authority?: string;
+  response_max_size?: number;
+  modified_after?: string;
+  only_active?: boolean;
+  controller?: string;
+  participant?: string;
+  sort?: string;
+  // Indexer-specific range filters
+  min_active_schemas?: number;  max_active_schemas?: number;
+  min_participants?: number;    max_participants?: number;
+  min_weight?: string;          max_weight?: string;
+  min_issued?: string;          max_issued?: string;
+  min_verified?: string;        max_verified?: string;
+  min_ecosystem_slash_events?: number;  max_ecosystem_slash_events?: number;
+  min_network_slash_events?: number;    max_network_slash_events?: number;
+}
+
+// ─── Credential Schema ───────────────────────────────────────
+// Matches: components/schemas/CredentialSchema in openapi-indexer.json
 
 export interface CredentialSchema {
   id: number;
-  trustRegistryId: number;
-  name: string;
-  jsonSchema: Record<string, unknown>;
-  digestAlgorithm: string;
-  issuerMode: string;
-  verifierMode: string;
+  tr_id: string;
+  json_schema: string;
+  deposit: string;
+  issuer_grantor_validation_validity_period: number;
+  verifier_grantor_validation_validity_period: number;
+  issuer_validation_validity_period: number;
+  verifier_validation_validity_period: number;
+  holder_validation_validity_period: number;
+  issuer_perm_management_mode: 'OPEN' | 'ECOSYSTEM' | 'GRANTOR_VALIDATION';
+  verifier_perm_management_mode: 'OPEN' | 'ECOSYSTEM' | 'GRANTOR_VALIDATION';
+  archived: string | null;
+  created: string;
+  modified: string;
+  // v4 new fields
+  pricing_asset_type: 'TU' | 'COIN' | 'FIAT';
+  pricing_asset: string;
+  digest_algorithm: string;
+  // Indexer-computed reputation fields
+  participants: number;
+  weight: string;
+  issued: string;
+  verified: string;
+  ecosystem_slash_events: number;
+  ecosystem_slashed_amount: string;
+  ecosystem_slashed_amount_repaid: string;
+  network_slash_events: number;
+  network_slashed_amount: string;
+  network_slashed_amount_repaid: string;
+}
+
+export interface CredentialSchemaFilter {
+  tr_id?: string;
+  modified_after?: string;
+  response_max_size?: number;
+  only_active?: boolean;
+  issuer_perm_management_mode?: string;
+  verifier_perm_management_mode?: string;
+  participant?: string;
+  sort?: string;
+  // Indexer-specific range filters
+  min_participants?: number;    max_participants?: number;
+  min_weight?: string;          max_weight?: string;
+  min_issued?: string;          max_issued?: string;
+  min_verified?: string;        max_verified?: string;
+  min_ecosystem_slash_events?: number;  max_ecosystem_slash_events?: number;
+  min_network_slash_events?: number;    max_network_slash_events?: number;
+}
+
+// ─── Schema Authorization Policy (v4 new) ────────────────────
+// Matches: components/schemas/SchemaAuthorizationPolicy in openapi-indexer.json
+
+export interface SchemaAuthorizationPolicy {
+  id: number;
+  schema_id: number;
+  role: 'ISSUER' | 'VERIFIER';
+  version: number;
+  url: string;
+  digest_sri: string;
+  created: string;
+  effective_from: string | null;
+  effective_until: string | null;
+  revoked: boolean;
+}
+
+// ─── Permission ──────────────────────────────────────────────
+// Matches: components/schemas/Permission in openapi-indexer.json
+
+export type PermissionType = 'ISSUER' | 'VERIFIER' | 'ISSUER_GRANTOR' | 'VERIFIER_GRANTOR' | 'ECOSYSTEM' | 'HOLDER';
+export type VPState = 'PENDING' | 'VALIDATED' | 'TERMINATED' | 'VALIDATION_STATE_UNSPECIFIED';
+export type PermState = 'REPAID' | 'SLASHED' | 'REVOKED' | 'EXPIRED' | 'ACTIVE' | 'FUTURE' | 'INACTIVE';
+
+export interface Permission {
+  id: string;
+  schema_id: string;
+  type: PermissionType;
+  did: string | null;
+  grantee: string;
+  created_by: string;
+  created: string;
+  modified: string;
+  extended: string | null;
+  extended_by: string | null;
+  slashed: string | null;
+  slashed_by: string | null;
+  repaid: string | null;
+  repaid_by: string | null;
+  effective_from: string | null;
+  effective_until: string | null;
+  revoked: string | null;
+  revoked_by: string | null;
+  country: string | null;
+  validation_fees: string;
+  issuance_fees: string;
+  verification_fees: string;
+  deposit: string;
+  slashed_deposit: string;
+  repaid_deposit: string;
+  validator_perm_id: string | null;
+  // Validation Process (VP) state
+  vp_state: VPState;
+  vp_last_state_change: string | null;
+  vp_current_fees: string;
+  vp_current_deposit: string;
+  vp_summary_digest_sri: string | null;
+  vp_exp: string | null;
+  vp_validator_deposit: string;
+  vp_term_requested: string | null;
+  // Indexer-computed: available actions
+  grantee_available_actions: string[];
+  validator_available_actions: string[];
+  // Indexer-computed: perm_state (derived)
+  perm_state: PermState;
+  // Indexer-computed reputation fields
+  weight: string;
+  issued: string;
+  verified: string;
+  participants: number;
+  ecosystem_slash_events: number;
+  ecosystem_slashed_amount: string;
+  ecosystem_slashed_amount_repaid: string;
+  network_slash_events: number;
+  network_slashed_amount: string;
+  network_slashed_amount_repaid: string;
+}
+
+export interface PermissionFilter {
+  schema_id?: string;
+  grantee?: string;
+  did?: string;
+  perm_id?: string;
+  type?: PermissionType;
+  only_valid?: boolean;
+  only_slashed?: boolean;
+  only_repaid?: boolean;
+  modified_after?: string;
+  country?: string;
+  vp_state?: VPState;
+  perm_state?: PermState;
+  response_max_size?: number;
+  when?: string;
+  validator_perm_id?: string;
+  sort?: string;
+  // Indexer-specific range filters
+  min_participants?: number;    max_participants?: number;
+  min_weight?: string;          max_weight?: string;
+  min_issued?: string;          max_issued?: string;
+  min_verified?: string;        max_verified?: string;
+  min_ecosystem_slash_events?: number;  max_ecosystem_slash_events?: number;
+  min_network_slash_events?: number;    max_network_slash_events?: number;
+}
+
+// ─── Permission Session ──────────────────────────────────────
+// Matches: components/schemas/PermissionSession in openapi-indexer.json
+
+export interface PermissionSession {
+  id: string;                    // UUID
+  controller: string;
+  agent_perm_id: string;
+  wallet_agent_perm_id: string;
+  authz: PermissionSessionAuthz[];
   created: string;
   modified: string;
 }
 
-export interface GovernanceFrameworkVersion {
+export interface PermissionSessionAuthz {
+  issuer_perm_id: number;
+  verifier_perm_id: number;
+  wallet_agent_perm_id: number;
+}
+
+// ─── Trust Deposit ───────────────────────────────────────────
+// Matches: components/schemas/TrustDeposit in openapi-indexer.json
+
+export interface TrustDeposit {
+  account: string;
+  share: string;
+  amount: string;
+  claimable: string;
+  slashed_deposit: string;
+  repaid_deposit: string;
+  last_slashed: string | null;
+  last_repaid: string | null;
+  slash_count: number;
+  last_repaid_by: string;
+}
+
+// ─── Digest (v4 new) ─────────────────────────────────────────
+// Matches: components/schemas/Digest in openapi-indexer.json
+
+export interface DigestEntry {
+  digest_sri: string;
+  created: string;             // ISO timestamp — effective issuance time for W3C VTCs
+}
+
+// ─── Exchange Rate (v4 new) ──────────────────────────────────
+// Matches: components/schemas/ExchangeRate in openapi-indexer.json
+
+export type PricingAssetType = 'TU' | 'COIN' | 'FIAT';
+
+export interface ExchangeRate {
   id: number;
-  trustRegistryId: number;
-  version: string;
-  url: string;
-  digest: string;
-  effectiveFrom: string;
+  base_asset_type: PricingAssetType;
+  base_asset: string;
+  quote_asset_type: PricingAssetType;
+  quote_asset: string;
+  rate: string;
+  rate_scale: number;
+  validity_duration: string;
+  expires: string;
+  state: boolean;
+  updated: string;
 }
 
-export interface DIDDirectoryEntry {
-  did: string;
-  blockHeight: number;
-  changeType: 'ADD' | 'REMOVE';
+export interface ExchangeRateGetFilter {
+  id?: string;
+  base_asset_type?: PricingAssetType;
+  base_asset?: string;
+  quote_asset_type?: PricingAssetType;
+  quote_asset?: string;
+  state?: boolean;
+  expire_ts?: string;
 }
 
-export interface PermissionStats {
-  permissionId: number;
-  issuedCount: number;
-  verifiedCount: number;
+export interface ExchangeRateListFilter {
+  base_asset_type?: PricingAssetType;
+  base_asset?: string;
+  quote_asset_type?: PricingAssetType;
+  quote_asset?: string;
+  state?: boolean;
+  expire?: string;
 }
 
-export interface PermissionFilter {
-  schemaId?: number;
-  did?: string;
-  type?: string;
-  status?: string;
+export interface PriceParams {
+  base_asset_type: PricingAssetType;
+  base_asset: string;
+  quote_asset_type: PricingAssetType;
+  quote_asset: string;
+  amount: string;
 }
+
+export interface PriceResponse {
+  price: string;
+  base_asset_type: string;
+  base_asset: string;
+  quote_asset_type: string;
+  quote_asset: string;
+  amount: string;
+  rate: string;
+  rate_scale: number;
+}
+
+// ─── History / Activity Timeline response types ─────────────
+
+export interface ActivityTimelineResponse {
+  activity: ActivityItem[];
+}
+
+export interface CredentialSchemaHistoryResponse {
+  schema: {
+    id: number;
+    history: Record<string, unknown>[];
+  };
+}
+
+export interface ActivityItem {
+  timestamp: string;
+  block_height: number;
+  entity_type: string;
+  entity_id: string;
+  account: string;
+  msg: string;
+  changes: Record<string, { old: unknown; new: unknown }> | null;
+}
+
+export interface PermissionSessionHistoryResponse {
+  history: PermissionSessionHistoryItem[];
+}
+
+export interface PermissionSessionHistoryItem {
+  session_id: string;
+  event_type: string;
+  height: number;
+  controller: string;
+  agent_perm_id: string;
+  wallet_agent_perm_id: string;
+  authz: Record<string, unknown>[];
+  changes: Record<string, { old: unknown; new: unknown }> | null;
+  created_at: string;
+}
+
+// ─── Beneficiaries ───────────────────────────────────────────
+
+export interface BeneficiaryResponse {
+  permissions: Permission[];
+}
+
+// ─── Indexer-specific response types ─────────────────────────
+
+export interface PendingFlatResponse {
+  trust_registries: Array<{
+    id: string;
+    did: string;
+    aka: string;
+    pending_tasks: number;
+    participants: number;
+    credential_schemas: Array<{
+      id: string;
+      title: string;
+      description: string;
+      pending_tasks: number;
+      participants: number;
+      permissions: Array<{
+        id: string;
+        type: string;
+        vp_state: string;
+        perm_state: string;
+        grantee: string;
+        did: string;
+        modified: string;
+      }>;
+    }>;
+  }>;
+}
+
+export interface GlobalMetricsResponse {
+  participants: number;
+  active_trust_registries: number;
+  archived_trust_registries: number;
+  active_schemas: number;
+  archived_schemas: number;
+  weight: string;
+  issued: number;
+  verified: number;
+  ecosystem_slash_events: number;
+  ecosystem_slashed_amount: string;
+  ecosystem_slashed_amount_repaid: string;
+  network_slash_events: number;
+  network_slashed_amount: string;
+  network_slashed_amount_repaid: string;
+}
+
 ```
 
 ---
@@ -1715,6 +2262,7 @@ interface HealthResponse {
 4. **Clustering**: **Single-writer architecture** — blocks are processed sequentially by a single writer instance. Read replicas handle GraphQL query load for horizontal scaling.
 5. **Historical queries**: `asOfBlockHeight` argument supported in GraphQL from day one. A `block_timestamps` table maps block heights to timestamps, and `blockHeightAtDate` / `blockTimestamp` GraphQL queries enable timestamp-based historical lookups.
 6. **Blob storage**: Large dereferenced objects (VPs, VCs, JSON Schemas, governance documents) are stored in an **external content-addressed blob store** (S3-compatible or local filesystem) rather than inline in PostgreSQL. The `cached_objects` table stores only a `blob_key` (SHA-256 hash) and `content_size`. DID documents are the exception — they remain inline as `JSONB` in the `did_documents` table because they are small (1-5 KB), frequently accessed during trust evaluation, and need fast parsing without a blob round-trip. This keeps the DB lean (~30 GB at 1M services) while blobs scale independently on cheap storage. Two adapters are provided: `S3Adapter` for production (S3, MinIO) and `FilesystemAdapter` for local development.
+7. **Permission state for trust evaluation**: The indexer computes `perm_state` (ACTIVE, EXPIRED, REVOKED, SLASHED, REPAID, FUTURE, INACTIVE) for every permission at any given `atBlockHeight`. This is the **authoritative field** the trust engine uses to determine whether a permission is valid — a permission is valid if and only if `perm_state == ACTIVE`. The `vp_state` field (PENDING, VALIDATED, TERMINATED) tracks the grantor validation process lifecycle and is **informational only** — it is not used in trust evaluation logic. A permission that has successfully completed validation will already have `perm_state = ACTIVE`.
 
 ---
 
