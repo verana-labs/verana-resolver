@@ -701,7 +701,7 @@ erDiagram
 ```sql
 -- Sync state tracking
 CREATE TABLE sync_state (
-    id VARCHAR(50) PRIMARY KEY DEFAULT 'main',
+    id TEXT PRIMARY KEY DEFAULT 'main',
     last_processed_block BIGINT NOT NULL DEFAULT 0,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
@@ -716,14 +716,14 @@ CREATE INDEX idx_block_timestamps_time ON block_timestamps (block_time);
 
 -- Verified services index
 CREATE TABLE services (
-    did VARCHAR(500) PRIMARY KEY,
-    display_name VARCHAR(255),
+    did TEXT PRIMARY KEY,
+    display_name TEXT,
     description TEXT,
     metadata JSONB,
-    location_country VARCHAR(100),
-    location_region VARCHAR(100),
-    location_city VARCHAR(100),
-    trust_status VARCHAR(50) NOT NULL, -- TRUSTED, UNTRUSTED, PARTIAL
+    location_country TEXT,
+    location_region TEXT,
+    location_city TEXT,
+    trust_status TEXT NOT NULL, -- TRUSTED, UNTRUSTED, PARTIAL
     production BOOLEAN DEFAULT FALSE,
     trust_evaluated_at TIMESTAMP WITH TIME ZONE,
     trust_expires_at TIMESTAMP WITH TIME ZONE,
@@ -748,9 +748,9 @@ CREATE INDEX idx_services_trust_status ON services (trust_status);
 
 -- Ecosystems
 CREATE TABLE ecosystems (
-    did VARCHAR(500) PRIMARY KEY,
+    did TEXT PRIMARY KEY,
     trust_registry_id BIGINT NOT NULL UNIQUE,
-    name VARCHAR(255),
+    name TEXT,
     description TEXT,
     governance_framework JSONB,
     total_deposit DECIMAL(30, 18),
@@ -761,22 +761,22 @@ CREATE TABLE ecosystems (
 
 -- Credentials (flattened for querying)
 CREATE TABLE credentials (
-    id VARCHAR(500) PRIMARY KEY,
-    subject_did VARCHAR(500) NOT NULL REFERENCES services(did) ON DELETE CASCADE,
-    issuer_did VARCHAR(500) NOT NULL,
+    id TEXT PRIMARY KEY,
+    subject_did TEXT NOT NULL REFERENCES services(did) ON DELETE CASCADE,
+    issuer_did TEXT NOT NULL,
     issuer_perm_id BIGINT,
     schema_id BIGINT,
-    schema_name VARCHAR(255),
-    credential_format VARCHAR(50) NOT NULL, -- W3C_VTC, ANONCREDS_VTC
-    credential_type VARCHAR(255),
+    schema_name TEXT,
+    credential_format TEXT NOT NULL, -- W3C_VTC, ANONCREDS_VTC
+    credential_type TEXT,
     claims JSONB,
-    status VARCHAR(50), -- VALID, EXPIRED, REVOKED, INVALID
+    status TEXT, -- VALID, EXPIRED, REVOKED, INVALID
     issued_at TIMESTAMP WITH TIME ZONE,
     valid_until TIMESTAMP WITH TIME ZONE,
     effective_issuance_time TIMESTAMP WITH TIME ZONE, -- W3C VTC only, from Digest entry
-    digest_sri VARCHAR(255), -- W3C VTC only, computed via JCS + digest_algorithm
-    ecosystem_did VARCHAR(500) REFERENCES ecosystems(did),
-    vtjsc_id VARCHAR(500),
+    digest_sri TEXT, -- W3C VTC only, computed via JCS + digest_algorithm
+    ecosystem_did TEXT REFERENCES ecosystems(did),
+    vtjsc_id TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
@@ -789,8 +789,8 @@ CREATE INDEX idx_credentials_claims ON credentials USING GIN (claims);
 
 -- Service-Ecosystem relationships
 CREATE TABLE service_ecosystems (
-    service_did VARCHAR(500) REFERENCES services(did) ON DELETE CASCADE,
-    ecosystem_did VARCHAR(500) REFERENCES ecosystems(did) ON DELETE CASCADE,
+    service_did TEXT REFERENCES services(did) ON DELETE CASCADE,
+    ecosystem_did TEXT REFERENCES ecosystems(did) ON DELETE CASCADE,
     PRIMARY KEY (service_did, ecosystem_did)
 );
 
@@ -798,49 +798,49 @@ CREATE TABLE service_ecosystems (
 CREATE TABLE permissions (
     id BIGINT PRIMARY KEY,
     schema_id BIGINT NOT NULL,
-    type VARCHAR(50) NOT NULL,           -- ECOSYSTEM, ISSUER_GRANTOR, VERIFIER_GRANTOR, ISSUER, VERIFIER, HOLDER
-    did VARCHAR(500),
-    grantee VARCHAR(200) NOT NULL,
-    created_by VARCHAR(200),
+    type TEXT NOT NULL,           -- ECOSYSTEM, ISSUER_GRANTOR, VERIFIER_GRANTOR, ISSUER, VERIFIER, HOLDER
+    did TEXT,
+    grantee TEXT NOT NULL,
+    created_by TEXT,
     created TIMESTAMP WITH TIME ZONE NOT NULL,
     modified TIMESTAMP WITH TIME ZONE NOT NULL,
     effective_from TIMESTAMP WITH TIME ZONE,
     effective_until TIMESTAMP WITH TIME ZONE,
     revoked TIMESTAMP WITH TIME ZONE,
-    revoked_by VARCHAR(200),
+    revoked_by TEXT,
     extended TIMESTAMP WITH TIME ZONE,
-    extended_by VARCHAR(200),
+    extended_by TEXT,
     slashed TIMESTAMP WITH TIME ZONE,
-    slashed_by VARCHAR(200),
+    slashed_by TEXT,
     repaid TIMESTAMP WITH TIME ZONE,
-    repaid_by VARCHAR(200),
-    country VARCHAR(10),
-    validation_fees VARCHAR(100),
-    issuance_fees VARCHAR(100),
-    verification_fees VARCHAR(100),
-    deposit VARCHAR(100),
-    slashed_deposit VARCHAR(100),
-    repaid_deposit VARCHAR(100),
+    repaid_by TEXT,
+    country TEXT,
+    validation_fees TEXT,
+    issuance_fees TEXT,
+    verification_fees TEXT,
+    deposit TEXT,
+    slashed_deposit TEXT,
+    repaid_deposit TEXT,
     validator_perm_id BIGINT,
     -- Validation Process (VP) state
-    vp_state VARCHAR(50),                -- PENDING, VALIDATED, TERMINATED
+    vp_state TEXT,                -- PENDING, VALIDATED, TERMINATED
     vp_last_state_change TIMESTAMP WITH TIME ZONE,
-    vp_current_fees VARCHAR(100),
-    vp_current_deposit VARCHAR(100),
-    vp_summary_digest_sri VARCHAR(255),
+    vp_current_fees TEXT,
+    vp_current_deposit TEXT,
+    vp_summary_digest_sri TEXT,
     vp_exp TIMESTAMP WITH TIME ZONE,
-    vp_validator_deposit VARCHAR(100),
+    vp_validator_deposit TEXT,
     -- VPR spec fields
     adjusted TIMESTAMP WITH TIME ZONE,
-    issuance_fee_discount VARCHAR(100),
-    verification_fee_discount VARCHAR(100),
+    issuance_fee_discount TEXT,
+    verification_fee_discount TEXT,
     vs_operator_authz_enabled BOOLEAN,
-    vs_operator_authz_spend_period VARCHAR(100),
-    vs_operator_authz_spend_limit VARCHAR(255),
+    vs_operator_authz_spend_period TEXT,
+    vs_operator_authz_spend_limit TEXT,
     vs_operator_authz_with_feegrant BOOLEAN,
-    vs_operator_authz_fee_spend_limit VARCHAR(255),
+    vs_operator_authz_fee_spend_limit TEXT,
     -- Indexer-computed derived state
-    perm_state VARCHAR(50),              -- REPAID, SLASHED, REVOKED, EXPIRED, ACTIVE, FUTURE, INACTIVE
+    perm_state TEXT,              -- REPAID, SLASHED, REVOKED, EXPIRED, ACTIVE, FUTURE, INACTIVE
     block_height BIGINT NOT NULL
 );
 
@@ -856,17 +856,17 @@ CREATE TABLE credential_schemas (
     id BIGINT PRIMARY KEY,
     tr_id BIGINT NOT NULL,
     json_schema TEXT,
-    deposit VARCHAR(100),
+    deposit TEXT,
     issuer_grantor_validation_validity_period INTEGER,
     verifier_grantor_validation_validity_period INTEGER,
     issuer_validation_validity_period INTEGER,
     verifier_validation_validity_period INTEGER,
     holder_validation_validity_period INTEGER,
-    issuer_perm_management_mode VARCHAR(50), -- OPEN, ECOSYSTEM, GRANTOR_VALIDATION
-    verifier_perm_management_mode VARCHAR(50),
-    pricing_asset_type VARCHAR(20),  -- TU, COIN, FIAT (v4)
-    pricing_asset VARCHAR(50),       -- e.g. 'tu', 'uvna', 'EUR' (v4)
-    digest_algorithm VARCHAR(50),    -- algorithm for computing digestSRI (v4)
+    issuer_perm_management_mode TEXT, -- OPEN, ECOSYSTEM, GRANTOR_VALIDATION
+    verifier_perm_management_mode TEXT,
+    pricing_asset_type TEXT,  -- TU, COIN, FIAT (v4)
+    pricing_asset TEXT,       -- e.g. 'tu', 'uvna', 'EUR' (v4)
+    digest_algorithm TEXT,    -- algorithm for computing digestSRI (v4)
     archived TIMESTAMP WITH TIME ZONE,
     created TIMESTAMP WITH TIME ZONE NOT NULL,
     modified TIMESTAMP WITH TIME ZONE NOT NULL,
@@ -877,10 +877,10 @@ CREATE TABLE credential_schemas (
 CREATE TABLE schema_authorization_policies (
     id BIGINT PRIMARY KEY,
     schema_id BIGINT NOT NULL REFERENCES credential_schemas(id),
-    role VARCHAR(20) NOT NULL,       -- ISSUER, VERIFIER
+    role TEXT NOT NULL,       -- ISSUER, VERIFIER
     version INTEGER NOT NULL,
     url TEXT NOT NULL,
-    digest_sri VARCHAR(255) NOT NULL,
+    digest_sri TEXT NOT NULL,
     created TIMESTAMP WITH TIME ZONE NOT NULL,
     effective_from TIMESTAMP WITH TIME ZONE,
     effective_until TIMESTAMP WITH TIME ZONE,
@@ -892,7 +892,7 @@ CREATE INDEX idx_sap_schema_role ON schema_authorization_policies (schema_id, ro
 
 -- DID document cache
 CREATE TABLE did_documents (
-    did VARCHAR(500) PRIMARY KEY,
+    did TEXT PRIMARY KEY,
     document JSONB NOT NULL,
     cached_at TIMESTAMP WITH TIME ZONE NOT NULL,
     expires_at TIMESTAMP WITH TIME ZONE NOT NULL
@@ -900,21 +900,21 @@ CREATE TABLE did_documents (
 
 -- Generic object cache (content stored in blob store)
 CREATE TABLE cached_objects (
-    uri VARCHAR(2000) PRIMARY KEY,
-    object_type VARCHAR(100), -- VP, VC, JSON_SCHEMA, GOVERNANCE_DOC
-    blob_key VARCHAR(500) NOT NULL, -- content-addressed key in blob store (sha256 hash)
+    uri TEXT PRIMARY KEY,
+    object_type TEXT, -- VP, VC, JSON_SCHEMA, GOVERNANCE_DOC
+    blob_key TEXT NOT NULL, -- content-addressed key in blob store (sha256 hash)
     content_size BIGINT, -- size in bytes, for monitoring
-    digest_sri VARCHAR(255),
+    digest_sri TEXT,
     cached_at TIMESTAMP WITH TIME ZONE NOT NULL,
     expires_at TIMESTAMP WITH TIME ZONE NOT NULL
 );
 
 -- Retry queue
 CREATE TABLE retry_queue (
-    id VARCHAR(500) PRIMARY KEY,
-    resource_type VARCHAR(100) NOT NULL,
-    resource_id VARCHAR(500) NOT NULL,
-    error_type VARCHAR(100),
+    id TEXT PRIMARY KEY,
+    resource_type TEXT NOT NULL,
+    resource_id TEXT NOT NULL,
+    error_type TEXT,
     error_message TEXT,
     first_failure_at TIMESTAMP WITH TIME ZONE NOT NULL,
     last_retry_at TIMESTAMP WITH TIME ZONE,
@@ -926,9 +926,9 @@ CREATE INDEX idx_retry_queue_next ON retry_queue (next_retry_at);
 
 -- DID usage reverse index
 CREATE TABLE did_usage (
-    did VARCHAR(500) NOT NULL,
-    role VARCHAR(50) NOT NULL, -- SERVICE, ISSUER, VERIFIER, ECOSYSTEM, ISSUER_GRANTOR, VERIFIER_GRANTOR, HOLDER
-    context_id VARCHAR(500), -- e.g., schema_id, ecosystem_did
+    did TEXT NOT NULL,
+    role TEXT NOT NULL, -- SERVICE, ISSUER, VERIFIER, ECOSYSTEM, ISSUER_GRANTOR, VERIFIER_GRANTOR, HOLDER
+    context_id TEXT, -- e.g., schema_id, ecosystem_did
     PRIMARY KEY (did, role, context_id)
 );
 
@@ -936,13 +936,13 @@ CREATE INDEX idx_did_usage_did ON did_usage (did);
 
 -- Operator Authorizations
 CREATE TABLE operator_authorizations (
-    authority VARCHAR(500) NOT NULL,
-    operator VARCHAR(500) NOT NULL,
+    authority TEXT NOT NULL,
+    operator TEXT NOT NULL,
     msg_types TEXT[] NOT NULL,
-    spend_limit VARCHAR(255),
-    fee_spend_limit VARCHAR(255),
+    spend_limit TEXT,
+    fee_spend_limit TEXT,
     expiration TIMESTAMP WITH TIME ZONE,
-    period VARCHAR(100),
+    period TEXT,
     block_height BIGINT NOT NULL,
     PRIMARY KEY (authority, operator)
 );
@@ -952,8 +952,8 @@ CREATE INDEX idx_operator_authz_operator ON operator_authorizations (operator);
 
 -- VS Operator Authorizations
 CREATE TABLE vs_operator_authorizations (
-    authority VARCHAR(500) NOT NULL,
-    vs_operator VARCHAR(500) NOT NULL,
+    authority TEXT NOT NULL,
+    vs_operator TEXT NOT NULL,
     permissions BIGINT[] NOT NULL,
     block_height BIGINT NOT NULL,
     PRIMARY KEY (authority, vs_operator)
