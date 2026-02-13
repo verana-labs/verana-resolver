@@ -1,0 +1,14 @@
+{
+  "vprs": [
+    {
+      "id": "verana-testnet",
+      "indexerUrl": "http://localhost:1317",
+      "ecosystems": [
+        {
+          "did": "did:web:ecosystem.example.com",
+          "name": "Example Ecosystem"
+        }
+      ]
+    }
+  ]
+}
