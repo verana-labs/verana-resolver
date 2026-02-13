@@ -1,0 +1,27 @@
+export { IndexerClient } from './client.js';
+export { IndexerError, isNotFound } from './errors.js';
+export type {
+  BlockHeightResponse,
+  ChangesResponse,
+  TrustRegistry,
+  TrustRegistryResponse,
+  CredentialSchema,
+  CredentialSchemaResponse,
+  CredentialSchemaListResponse,
+  Permission,
+  PermissionResponse,
+  PermissionListResponse,
+  PermissionSession,
+  PermissionSessionResponse,
+  BeneficiaryResponse,
+  TrustDeposit,
+  TrustDepositResponse,
+  DigestResponse,
+  ExchangeRate,
+  ExchangeRateResponse,
+  PriceResponse,
+  ListPermissionsParams,
+  ListCredentialSchemasParams,
+  GetExchangeRateParams,
+  GetPriceParams,
+} from './types.js';
