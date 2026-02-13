@@ -20,13 +20,11 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@credo-ts/askar": "^0.5.0",
-    "@credo-ts/core": "^0.5.0",
-    "@credo-ts/node": "^0.5.0",
-    "@credo-ts/webvh": "^0.5.0",
-    "@credo-ts/anoncreds": "^0.5.0",
+    "@credo-ts/core": "^0.6.2",
+    "@credo-ts/node": "^0.6.2",
+    "@credo-ts/webvh": "^0.6.2",
+    "@credo-ts/anoncreds": "^0.6.2",
     "@fastify/cors": "^11.0.0",
-    "@hyperledger/aries-askar-nodejs": "^0.2.0",
     "canonicalize": "^2.0.0",
     "fastify": "^5.2.1",
     "ioredis": "^5.4.2",

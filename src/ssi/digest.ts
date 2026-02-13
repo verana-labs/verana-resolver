@@ -5,7 +5,7 @@ let _canonicalize: ((obj: unknown) => string) | null = null;
 async function getCanonicalizer(): Promise<(obj: unknown) => string> {
   if (_canonicalize === null) {
     const mod = await import('canonicalize');
-    _canonicalize = mod.default as (obj: unknown) => string;
+    _canonicalize = mod.default as unknown as (obj: unknown) => string;
   }
   return _canonicalize;
 }
