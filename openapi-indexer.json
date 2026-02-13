@@ -1393,7 +1393,7 @@
           "Permissions"
         ],
         "summary": "Get Permission Session",
-        "description": "Retrieve a specific Permission Session by its ID",
+        "description": "Retrieve a specific Permission Session by its UUID. A Permission Session is created via MOD-PERM-MSG-10 (Create or Update Permission Session) and records credential issuance or verification exchanges, including the authority, VS operator, agent, and all session records with issuer/verifier/wallet_agent permission IDs.",
         "operationId": "getPermissionSession",
         "parameters": [
           {
@@ -1899,9 +1899,63 @@
           "Permissions"
         ],
         "summary": "List Permission Sessions",
-        "description": "Retrieve a paginated list of Permission Sessions",
+        "description": "Retrieve a paginated list of Permission Sessions created via MOD-PERM-MSG-10. Supports filtering by authority, operator, agent, issuer/verifier permission, and time range.",
         "operationId": "listPermissionSessions",
         "parameters": [
+          {
+            "name": "authority",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Filter by authority (group account address)"
+          },
+          {
+            "name": "vs_operator",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Filter by VS operator account"
+          },
+          {
+            "name": "agent_perm_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Filter by agent permission ID"
+          },
+          {
+            "name": "issuer_perm_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Filter sessions that contain at least one record with this issuer permission ID"
+          },
+          {
+            "name": "verifier_perm_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Filter sessions that contain at least one record with this verifier permission ID"
+          },
+          {
+            "name": "wallet_agent_perm_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Filter sessions that contain at least one record with this wallet agent permission ID"
+          },
           {
             "name": "modified_after",
             "in": "query",
@@ -1910,7 +1964,7 @@
               "type": "string",
               "format": "date-time"
             },
-            "description": "Filter by modification date"
+            "description": "Filter by modification date (ISO 8601). Returns sessions modified after this timestamp."
           },
           {
             "name": "response_max_size",
@@ -1923,6 +1977,15 @@
               "default": 64
             },
             "description": "Maximum number of records to return"
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Comma-separated list of sort criteria. Prefix with '-' for descending, '+' or nothing for ascending. Allowed: id, created, modified. Default: -modified"
           },
           {
             "$ref": "#/components/parameters/At-Block-Height"
@@ -3642,46 +3705,70 @@
       },
       "PermissionSession": {
         "type": "object",
+        "description": "A Permission Session created via MOD-PERM-MSG-10 (Create or Update Permission Session). Records credential issuance or verification exchanges between a payer VS and an agent.",
         "properties": {
           "id": {
             "type": "string",
-            "format": "uuid"
+            "format": "uuid",
+            "description": "Unique session identifier provided by the caller"
           },
-          "controller": {
-            "type": "string"
+          "authority": {
+            "type": "string",
+            "description": "Group account (authority) on whose behalf the session was created"
+          },
+          "vs_operator": {
+            "type": "string",
+            "description": "Operator account authorized by the authority to execute CreateOrUpdatePermissionSession"
           },
           "agent_perm_id": {
-            "type": "string"
+            "type": "string",
+            "description": "ISSUER permission ID of the agent (VUA or VS) that received the credential offer or presentation request"
           },
-          "wallet_agent_perm_id": {
-            "type": "string"
-          },
-          "authz": {
+          "session_records": {
             "type": "array",
+            "description": "List of session records. Each record represents one credential issuance or verification event within this session.",
             "items": {
-              "type": "object",
-              "properties": {
-                "issuer_perm_id": {
-                  "type": "integer"
-                },
-                "verifier_perm_id": {
-                  "type": "integer"
-                },
-                "wallet_agent_perm_id": {
-                  "type": "integer"
-                }
-              }
+              "$ref": "#/components/schemas/PermissionSessionRecord"
             }
           },
           "created": {
             "type": "string",
-            "format": "date-time"
+            "format": "date-time",
+            "description": "Timestamp when the session was first created"
           },
           "modified": {
             "type": "string",
-            "format": "date-time"
+            "format": "date-time",
+            "description": "Timestamp when the session was last updated (new record added)"
           }
-        }
+        },
+        "required": ["id", "authority", "vs_operator", "agent_perm_id", "session_records", "created", "modified"]
+      },
+      "PermissionSessionRecord": {
+        "type": "object",
+        "description": "A single credential exchange record within a PermissionSession. Created each time MOD-PERM-MSG-10 is called for the same session ID.",
+        "properties": {
+          "created": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Timestamp when this record was created"
+          },
+          "issuer_perm_id": {
+            "type": "string",
+            "nullable": true,
+            "description": "ISSUER permission ID of the credential issuer. Present for issuance sessions, null for verification-only sessions."
+          },
+          "verifier_perm_id": {
+            "type": "string",
+            "nullable": true,
+            "description": "VERIFIER permission ID of the credential verifier. Present for verification sessions, null for issuance-only sessions."
+          },
+          "wallet_agent_perm_id": {
+            "type": "string",
+            "description": "ISSUER permission ID of the wallet agent where the credential is or will be stored. May equal agent_perm_id if agent and wallet are the same."
+          }
+        },
+        "required": ["created", "wallet_agent_perm_id"]
       },
       "PermissionSessionResponse": {
         "type": "object",
@@ -3704,39 +3791,45 @@
       },
       "PermissionSessionHistoryItem": {
         "type": "object",
+        "description": "A historical event for a PermissionSession, representing a MOD-PERM-MSG-10 transaction.",
         "properties": {
           "session_id": {
             "type": "string",
             "format": "uuid"
           },
           "event_type": {
-            "type": "string"
+            "type": "string",
+            "description": "Type of event: CreatePermissionSession or UpdatePermissionSession"
           },
           "height": {
-            "type": "integer"
+            "type": "integer",
+            "description": "Block height at which this event occurred"
           },
-          "controller": {
-            "type": "string"
+          "authority": {
+            "type": "string",
+            "description": "Group account that executed the session creation/update"
+          },
+          "vs_operator": {
+            "type": "string",
+            "description": "Operator account that signed the transaction"
           },
           "agent_perm_id": {
-            "type": "string"
+            "type": "string",
+            "description": "Agent permission ID for this session"
           },
-          "wallet_agent_perm_id": {
-            "type": "string"
-          },
-          "authz": {
-            "type": "array",
-            "items": {
-              "type": "object"
-            }
+          "record": {
+            "$ref": "#/components/schemas/PermissionSessionRecord",
+            "description": "The session record added by this event"
           },
           "changes": {
             "type": "object",
-            "nullable": true
+            "nullable": true,
+            "description": "Changed fields (old/new values) for update events"
           },
           "created_at": {
             "type": "string",
-            "format": "date-time"
+            "format": "date-time",
+            "description": "Timestamp of this event"
           }
         }
       },

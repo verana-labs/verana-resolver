@@ -1,6 +1,6 @@
 # Verana Trust Resolver Container Specification
 
-## Draft 0.2
+## Draft 0.1
 
 **Editors**:
 
@@ -8,20 +8,21 @@
 
 ## 1. Introduction
 
-The **Verana Trust Resolver Container** ("**Verana Resolver**") is a core infrastructure component of Verana. It continuously ingests state from the **Verana Indexer**, resolves decentralized identifiers (DIDs), dereferences verifiable credentials (VCs) presented as [linked-vp](https://identity.foundation/linked-vp/) in DID Documents, and validates trust according to the **Verifiable Trust Specification**. It exposes a **REST API** for trust resolution queries as defined in [trust-resolution.md](trust-resolution.md).
+The **Verana Trust Resolver Container** (“**Verana Resolver**”) is a core infrastructure component of Verana. It continuously ingests state from the **Verana Indexer**, resolves decentralized identifiers (DIDs), dereferences verifiable credentials (VCs) presented as [linked-vp](https://identity.foundation/linked-vp/) in DID Documents, validates trust according to the **Verifiable Trust Specification**, and exposes a **GraphQL API** for querying and searching trusted services, ecosystems, issuers, verifiers, governance information, and more.
 
-The Trust Resolver maintains a **local cache** of all relevant data and performs **deterministic trust evaluations**, respecting both:
+The Trust Resolver maintains a **local projection** of all relevant data and performs **deterministic trust evaluations**, respecting both:
 
 - ledger **block heights**, and  
 - **TTL-based** refresh constraints for dereferenced objects and trust evaluations.
 
 This specification defines:
 
-- Normative behaviors and constraints for ingestion, caching, and evaluation.  
+- Normative behaviors and constraints for ingestion, caching, evaluation, and querying.  
 - The **block-height sync mechanism** with the Indexer.  
 - **Recursive trust resolution** and **issuer permission validation**.  
 - Error and retry management.  
-- Consistency guarantees.
+- Consistency guarantees.  
+- GraphQL querying requirements.
 
 The audience for this specification includes implementers of the Verana Resolver, ecosystem architects, and contributors to the Verifiable Trust infrastructure.
 
@@ -41,16 +42,18 @@ The Trust Resolver consists of:
   - **Pass1**: caching and dereferencing  
   - **Pass2**: trust evaluation  
 - A **retry subsystem** for dereferencing and evaluation failures.  
-- A **local cache** containing trust evaluation results and dereferenced objects.  
-- A **REST API** for trust resolution queries (see [trust-resolution.md](trust-resolution.md)).  
-- A **consistency model** ensuring that API queries see only the **last fully processed block**.
+- A **local index** containing trusted entities and searchable objects.  
+- A **GraphQL interface** that exposes the index.  
+- A **consistency model** ensuring that GraphQL queries see only the **last fully processed block**.
 
 The Trust Resolver **MUST NOT** query the VPR blockchain directly.  
 It interacts **only with the Indexer**, which itself is responsible for mirroring and querying VPR state.
 
 ## 4. Indexer Integration Requirements
 
-The Indexer OpenAPI specification is defined in [openapi-indexer.json](openapi-indexer.json).
+[Indexer API is available here](https://api.testnet.verana.network/static/openapi.yml)
+
+Documentation in the swagger-ui: https://idx.testnet.verana.network/
 
 ## 5. Variables
 
@@ -83,9 +86,9 @@ Added to these variables, container MUST provide a way to configure:
 
 ## 6. Consistency Model
 
-The REST API MUST only expose the state of the trust cache at lastProcessedBlock.
+GraphQL MUST only expose the state of the trust index at lastProcessedBlock.
 
-Any ongoing processing for blocks above lastProcessedBlock MUST NOT be visible in API query results.
+Any ongoing processing for blocks above lastProcessedBlock MUST NOT be visible in GraphQL query results.
 
 When Pass1 and Pass2 both succeed for a particular block B:
 
@@ -275,9 +278,90 @@ If a DID meets all requirements to be **Verifiable Service**, but presents addit
 
 A `visitedDids` set SHOULD be used to prevent infinite recursion during recursive issuer and verifier verification.
 
-## 10. Caching Policies
+## 10. Local Projection Structure
 
-### 10.1 CACHE_TTL — Dereferenced Object Cache
+The Trust Resolver MUST maintain a local projection (index) including, at minimum:
+
+- Services (Verifiable Services, user agents, etc.), including:
+    - DID
+    - Display name / metadata
+    - Location (if present)
+    - Service type / categories
+    - Linked ecosystems
+- Ecosystems:
+    - TrustRegistry info
+    - Ecosystem DID
+    - Active governance framework summary
+    - Deposits and other token-derived metrics (via Indexer)
+- Participants:
+    - Issuers, Verifiers, Grantors, Ecosystem controllers
+    - Permissions and their statuses
+    - Statistics (issuedCount, verifiedCount, etc. from Indexer)
+- Credential Facts:
+    - Flattened view of credentials, schema references, issuer, subject, claims.
+- DID Usage Reverse Index:
+    - For each DID, all roles it plays (service, issuer, ecosystem, grantor, etc.).
+- Permission Statistics:
+    - Counters such as number of issued / verified credentials per permission, as supplied by the Indexer.
+- Token Values:
+    - Trust deposits and related aggregate values, via Indexer and TrustDeposit entities.
+- Governance Framework Info:
+    - Active governance framework per trust registry and ecosystem.
+
+All indexed entities MUST be aligned with and associated to specific block heights.
+
+## 11. GraphQL API Requirements
+
+### 11.1 Pagination
+
+All collection-returning queries MUST implement cursor-based pagination following the Connection pattern:
+
+Connection type with:
+    - edges[] { cursor, node }
+    - pageInfo { hasNextPage, hasPreviousPage, startCursor, endCursor }
+
+Offset-based pagination MAY be supported as a convenience, but cursor-based pagination MUST be normative.
+
+### 11.2 Required Queries
+
+The Trust Resolver MUST expose at least the following queries:
+
+- services(filter, orderBy, pagination)
+- ecosystems(filter, orderBy, pagination)
+- credentials(filter, pagination)
+- didUsage(did)
+- search(text)
+
+These MUST be sufficient to express queries such as:
+
+- “Where is Alice’s AI Assistant whose attached AI Assistant Credential shows the owner name ‘Alice’?”
+- “Which social channels hold a Blue Network Credential from Ecosystem DEF and have an avatar credential containing @bob_influencer?”
+- “Which services in Bristol, UK present an E-commerce Retail Credential from issuers of the Ecosystem Ecommerce Global Alliance and sell baby shoes?”
+- “List all services with a valid Hotel Credential from Ecosystem PMS Vendor ABC located in France.”
+- “Show certified plumbers AI assistants who hold a Plumber Credential from Ecosystem Verified Workers in Bogotá.”
+- “Identity” → which should return schemas/services/etc. containing “Identity”.
+
+### 11.3 Filters
+
+GraphQL filters MUST support at least:
+
+- Filter by DID.
+- Filter by ecosystem DID or TrustRegistry.
+- Filter by credential schema (type, ID, ecosystem, etc.).
+- Filter by claims via path selectors (e.g., owner.name, address.city, products.category).
+- Filter by location (country, region, city).
+- Filter by issuer DID, verifier DID, or role.
+- Filter by trust status (TRUSTED / PARTIAL / UNTRUSTED).
+
+### 11.4 Consistency
+
+All GraphQL responses MUST reflect only the state as of lastProcessedBlock.
+
+Implementations MAY add query arguments (e.g. asOfBlockHeight) that allow clients to request older snapshots, but MUST NOT expose state newer than lastProcessedBlock.
+
+## 12. Caching Policies
+
+### 12.1 CACHE_TTL — Dereferenced Object Cache
 
 - Every dereferenced object (DID Document, VC, VP, JSON Schema, governance document, etc.) MUST have:
 - a cachedAt timestamp, and
@@ -287,7 +371,7 @@ A `visitedDids` set SHOULD be used to prevent infinite recursion during recursiv
 - If now >= expiresAt, the object MUST be re-fetched from its authoritative source.
 - For credentials, if the credential has `validUntil` and now is beyond that date, it MUST be treated as expired regardless of CACHE_TTL. Implementations MAY still attempt a refresh if the URL might now contain a newer version, but the original credential is invalid.
 
-### 10.2 TRUST_TTL — Trust Evaluation Cache
+### 12.2 TRUST_TTL — Trust Evaluation Cache
 
 - Every trust evaluation result MUST store:
 - trustEvaluatedAt
@@ -296,7 +380,7 @@ A `visitedDids` set SHOULD be used to prevent infinite recursion during recursiv
 - If now < trustExpiresAt, the result MAY be reused provided no new block or invalidation has changed its inputs.
 - If now >= trustExpiresAt, Pass2 MUST re-evaluate trust for that DID/context.
 
-### 10.3 Retry Interaction
+### 12.3 Retry Interaction
 
 If a TTL-triggered refresh (Pass1 or Pass2) fails:
 
@@ -307,30 +391,36 @@ If a TTL-triggered refresh (Pass1 or Pass2) fails:
 
 If the retry window is exceeded, the resource MUST be considered permanently failed, removed from `reattemptableResources`, and any trust evaluation depending on it MUST treat that dependency as unavailable (leading generally to an untrusted or partially trusted status).
 
-## 11. Security Requirements
+## 13. Security Requirements
 
 - All dereferenced documents MUST validate integrity where possible (e.g., via digest_sri for governance framework documents, credential, presentations signatures...).
 - All HTTP(S) requests SHOULD use TLS.
-- DID resolution MUST follow the respective DID method's security rules (e.g., correct use of DID resolvers and method-specific verification).
+- DID resolution MUST follow the respective DID method’s security rules (e.g., correct use of DID resolvers and method-specific verification).
 - Cached objects SHOULD be immutable with respect to their content hash; if the same URL returns content with a different hash, it SHOULD be treated as a new version and revalidated.
 
 Implementers MUST take care to avoid cache poisoning and similar attacks when storing dereferenced data.
 
-## 12. REST API
-
-The Trust Resolver MUST expose a REST API implementing the trust resolution queries defined in [trust-resolution.md](trust-resolution.md). That document is **normative** for the API surface: request parameters, response schemas, and query semantics.
-
-All API responses MUST reflect only the state as of lastProcessedBlock (see Section 6).
-
-## 13. Implementation Flexibility
+## 14. Implementation Flexibility
 
 This specification does not mandate:
 
 - Storage engine (e.g., SQL, key-value store, graph DB, document DB, etc.).
 - Caching mechanism (in-memory, distributed cache, etc.).
 - Threading or concurrency model.
-- API framework or runtime.
+- GraphQL framework or runtime.
 
 The only hard requirements are that all MUST and SHOULD rules about ingestion, caching, evaluation, and visibility are honored.
+
+## 15. Future Extensions
+
+Possible future extensions include:
+
+- Semantic search suggestions or NLP-powered query expansion.
+- TRQP 2.x endpoint parity exposed alongside GraphQL.
+- On-demand trust re-evaluation endpoints for admin / debugging.
+- Service heartbeat / uptime checking integration (e.g., availability checks, latency, etc.).
+- Extended reputation signals derived from TrustDeposit and historical behavior.
+
+These are non-normative ideas and do not form part of this version of the specification.
 
 EOF
