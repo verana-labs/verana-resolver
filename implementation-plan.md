@@ -526,6 +526,47 @@ Redis caches only **downloaded external files** (DID docs, VPs, VCs) used during
 
 ---
 
+## Technology Stack
+
+### Runtime & Language
+
+| Technology | Purpose | Version |
+|------------|---------|---------|
+| Node.js | Runtime | 20 LTS |
+| TypeScript | Language | 5.x |
+
+### Core Dependencies
+
+| Package | Purpose |
+|---------|---------|
+| `fastify` | REST framework |
+| `@credo-ts/core` | SSI agent framework (verification-only agent) |
+| `@credo-ts/node` | Node.js platform bindings for Credo |
+| `@credo-ts/webvh` | `did:webvh` DID resolution (built-in) |
+| `@credo-ts/anoncreds` | AnonCreds credential verification (ZKP) |
+| `@credo-ts/askar` | Wallet/key storage backend (required by core) |
+| `ioredis` | Redis client |
+| `pg` | PostgreSQL driver |
+| `zod` | Schema validation |
+| `pino` | Structured logging |
+| `canonicalize` | JCS canonicalization (RFC 8785) for digestSRI computation |
+| `jose` | JWT/JWS verification (backup, outside Credo) |
+
+DID methods supported: `did:web` (built-in to `@credo-ts/core`), `did:webvh` (via `@credo-ts/webvh`).
+
+W3C VCs verified via Credo (JWT + JSON-LD). AnonCreds VCs verified via `@credo-ts/anoncreds`.
+
+### Development Dependencies
+
+| Package | Purpose |
+|---------|---------|
+| `vitest` | Testing framework |
+| `tsx` | TypeScript execution |
+| `eslint` | Linting |
+| `prettier` | Code formatting |
+
+---
+
 ## Implementation Order
 
 | Step | Description | Dependencies |
