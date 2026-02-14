@@ -1,7 +1,16 @@
 import { getPool } from '../db/index.js';
-import type { TrustResult, CredentialEvaluation } from './types.js';
+import type { TrustResult } from './types.js';
 
-export async function getCachedTrustResult(did: string): Promise<TrustResult | null> {
+export interface TrustResultSummary {
+  did: string;
+  trustStatus: string;
+  production: boolean;
+  evaluatedAt: string;
+  evaluatedAtBlock: number;
+  expiresAt: string;
+}
+
+export async function getSummaryTrustResult(did: string): Promise<TrustResultSummary | null> {
   const pool = getPool();
   const row = await pool.query(
     `SELECT did, trust_status, production, evaluated_at, evaluated_block, expires_at
@@ -12,32 +21,6 @@ export async function getCachedTrustResult(did: string): Promise<TrustResult | n
   if (row.rows.length === 0) return null;
 
   const r = row.rows[0];
-
-  // Fetch associated credential results
-  const credRows = await pool.query(
-    `SELECT credential_id, result_status, ecs_type, schema_id, issuer_did,
-            presented_by, issued_by, perm_id, error_reason
-     FROM credential_results WHERE did = $1`,
-    [did],
-  );
-
-  const credentials: CredentialEvaluation[] = [];
-  for (const cr of credRows.rows) {
-    if (cr.result_status !== 'FAILED') {
-      credentials.push({
-        result: cr.result_status,
-        ecsType: cr.ecs_type ?? null,
-        presentedBy: cr.presented_by ?? '',
-        issuedBy: cr.issued_by ?? '',
-        id: cr.credential_id,
-        type: 'VerifiableTrustCredential',
-        format: 'W3C_VTC',
-        claims: {},
-        permissionChain: [],
-      });
-    }
-  }
-
   return {
     did: r.did,
     trustStatus: r.trust_status,
@@ -45,9 +28,19 @@ export async function getCachedTrustResult(did: string): Promise<TrustResult | n
     evaluatedAt: r.evaluated_at.toISOString(),
     evaluatedAtBlock: Number(r.evaluated_block),
     expiresAt: r.expires_at.toISOString(),
-    credentials,
-    failedCredentials: [],
   };
+}
+
+export async function getFullTrustResult(did: string): Promise<TrustResult | null> {
+  const pool = getPool();
+  const row = await pool.query(
+    `SELECT full_result_json
+     FROM trust_results WHERE did = $1 AND expires_at > NOW()`,
+    [did],
+  );
+
+  if (row.rows.length === 0 || !row.rows[0].full_result_json) return null;
+  return row.rows[0].full_result_json as TrustResult;
 }
 
 export async function upsertTrustResult(result: TrustResult): Promise<void> {
@@ -57,16 +50,17 @@ export async function upsertTrustResult(result: TrustResult): Promise<void> {
   try {
     await client.query('BEGIN');
 
-    // Upsert trust_results
+    // Upsert trust_results (including full JSON for detail=full queries)
     await client.query(
-      `INSERT INTO trust_results (did, trust_status, production, evaluated_at, evaluated_block, expires_at)
-       VALUES ($1, $2, $3, $4, $5, $6)
+      `INSERT INTO trust_results (did, trust_status, production, evaluated_at, evaluated_block, expires_at, full_result_json)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
        ON CONFLICT (did) DO UPDATE SET
          trust_status = EXCLUDED.trust_status,
          production = EXCLUDED.production,
          evaluated_at = EXCLUDED.evaluated_at,
          evaluated_block = EXCLUDED.evaluated_block,
-         expires_at = EXCLUDED.expires_at`,
+         expires_at = EXCLUDED.expires_at,
+         full_result_json = EXCLUDED.full_result_json`,
       [
         result.did,
         result.trustStatus,
@@ -74,6 +68,7 @@ export async function upsertTrustResult(result: TrustResult): Promise<void> {
         result.evaluatedAt,
         result.evaluatedAtBlock,
         result.expiresAt,
+        JSON.stringify(result),
       ],
     );
 

@@ -1,6 +1,7 @@
 import Fastify from 'fastify';
 import { loadConfig } from './config/index.js';
 import { loadVprAllowlist } from './config/vpr-allowlist.js';
+import { registerQ1Route } from './routes/q1-resolve.js';
 
 async function main(): Promise<void> {
   const config = loadConfig();
@@ -19,6 +20,8 @@ async function main(): Promise<void> {
       vprs: allowlist.vprs.map((vpr) => vpr.id),
     };
   });
+
+  await registerQ1Route(server);
 
   await server.listen({ port: config.PORT, host: '0.0.0.0' });
   server.log.info(
