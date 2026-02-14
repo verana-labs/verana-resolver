@@ -14,6 +14,8 @@ import type {
   PriceResponse,
   ListPermissionsParams,
   ListCredentialSchemasParams,
+  ListTrustRegistriesParams,
+  TrustRegistryListResponse,
   GetExchangeRateParams,
   GetPriceParams,
 } from './types.js';
@@ -54,6 +56,13 @@ export class IndexerClient {
     atBlock?: number,
   ): Promise<TrustRegistryResponse> {
     return this.get<TrustRegistryResponse>(`/verana/tr/v1/get/${id}`, {}, atBlock);
+  }
+
+  async listTrustRegistries(
+    params: ListTrustRegistriesParams = {},
+    atBlock?: number,
+  ): Promise<TrustRegistryListResponse> {
+    return this.get<TrustRegistryListResponse>('/verana/tr/v1/list', { ...params }, atBlock);
   }
 
   // --- Credential Schema ---

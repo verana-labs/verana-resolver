@@ -253,6 +253,16 @@ export interface GetExchangeRateParams {
   expire_ts?: string;
 }
 
+export interface ListTrustRegistriesParams {
+  active_gf_only?: boolean;
+  preferred_language?: string;
+  authority?: string;
+  controller?: string;
+  only_active?: boolean;
+  participant?: string;
+  response_max_size?: number;
+}
+
 export interface GetPriceParams {
   base_asset_type: string;
   base_asset: string;
