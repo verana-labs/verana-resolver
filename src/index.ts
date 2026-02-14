@@ -3,6 +3,7 @@ import { loadConfig } from './config/index.js';
 import { loadVprAllowlist } from './config/vpr-allowlist.js';
 import { registerQ1Route } from './routes/q1-resolve.js';
 import { createQ2Route } from './routes/q2-issuer-auth.js';
+import { createQ3Route } from './routes/q3-verifier-auth.js';
 import { IndexerClient } from './indexer/client.js';
 
 async function main(): Promise<void> {
@@ -28,6 +29,7 @@ async function main(): Promise<void> {
   // Q2+ endpoints need IndexerClient
   const indexer = new IndexerClient(allowlist.vprs[0]?.indexerUrl ?? 'http://localhost:3001');
   await createQ2Route(indexer)(server);
+  await createQ3Route(indexer)(server);
 
   await server.listen({ port: config.PORT, host: '0.0.0.0' });
   server.log.info(
