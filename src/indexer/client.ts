@@ -69,7 +69,7 @@ export class IndexerClient {
     params: ListCredentialSchemasParams = {},
     atBlock?: number,
   ): Promise<CredentialSchemaListResponse> {
-    return this.get<CredentialSchemaListResponse>('/verana/cs/v1/list', params, atBlock);
+    return this.get<CredentialSchemaListResponse>('/verana/cs/v1/list', { ...params }, atBlock);
   }
 
   // --- Permissions ---
@@ -85,7 +85,7 @@ export class IndexerClient {
     params: ListPermissionsParams = {},
     atBlock?: number,
   ): Promise<PermissionListResponse> {
-    return this.get<PermissionListResponse>('/verana/perm/v1/list', params, atBlock);
+    return this.get<PermissionListResponse>('/verana/perm/v1/list', { ...params }, atBlock);
   }
 
   async getPermissionSession(
@@ -130,14 +130,14 @@ export class IndexerClient {
     params: GetExchangeRateParams,
     atBlock?: number,
   ): Promise<ExchangeRateResponse> {
-    return this.get<ExchangeRateResponse>('/verana/xr/v1/get', params, atBlock);
+    return this.get<ExchangeRateResponse>('/verana/xr/v1/get', { ...params }, atBlock);
   }
 
   async getPrice(
     params: GetPriceParams,
     atBlock?: number,
   ): Promise<PriceResponse> {
-    return this.get<PriceResponse>('/verana/xr/v1/price', params, atBlock);
+    return this.get<PriceResponse>('/verana/xr/v1/price', { ...params }, atBlock);
   }
 
   // --- Internal ---
@@ -192,7 +192,7 @@ export class IndexerClient {
       if (response.status === 400) {
         const body = await response.text();
         throw new IndexerError(
-          `Bad request: ${url} — ${body}`,
+          `Bad request: ${url} \u2014 ${body}`,
           400,
           'BAD_REQUEST',
         );
@@ -225,7 +225,7 @@ export class IndexerClient {
       }
 
       throw new IndexerError(
-        `Network error: ${url} — ${String(err)}`,
+        `Network error: ${url} \u2014 ${String(err)}`,
         null,
         'NETWORK',
       );

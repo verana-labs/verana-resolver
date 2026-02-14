@@ -1,7 +1,5 @@
 import { Agent, DidsModule, W3cCredentialsModule } from '@credo-ts/core';
 import { agentDependencies } from '@credo-ts/node';
-import { AskarModule } from '@credo-ts/askar';
-import { ariesAskar } from '@hyperledger/aries-askar-nodejs';
 
 let _agent: Agent | null = null;
 
@@ -9,16 +7,8 @@ export async function initializeAgent(): Promise<Agent> {
   if (_agent !== null) return _agent;
 
   const agent = new Agent({
-    config: {
-      label: 'verana-resolver',
-      walletConfig: {
-        id: 'verana-resolver-wallet',
-        key: 'verana-resolver-default-key',
-      },
-    },
     dependencies: agentDependencies,
     modules: {
-      askar: new AskarModule({ ariesAskar }),
       dids: new DidsModule(),
       w3cCredentials: new W3cCredentialsModule(),
     },
