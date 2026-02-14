@@ -111,6 +111,7 @@ export interface Permission {
   modified: string;
   effective: string;
   expiration: string | null;
+  effective_until?: string | null;
   revoked: string | null;
   slashed: string | null;
   repaid: string | null;
@@ -119,6 +120,11 @@ export interface Permission {
   vp_state: string;
   perm_state: string;
   validator_perm_id: string | null;
+  issuance_fees?: string;
+  verification_fees?: string;
+  validation_fees?: string;
+  issuance_fee_discount?: string;
+  verification_fee_discount?: string;
   issued: number;
   verified: number;
   ecosystem_slash_events: number;
@@ -160,7 +166,7 @@ export interface PermissionSessionListResponse {
 }
 
 export interface BeneficiaryResponse {
-  beneficiaries: unknown;
+  permissions: Permission[];
 }
 
 export interface TrustDeposit {
@@ -229,6 +235,7 @@ export interface ListPermissionsParams {
 
 export interface ListCredentialSchemasParams {
   tr_id?: string;
+  json_schema?: string;
   only_active?: boolean;
   issuer_perm_management_mode?: string;
   verifier_perm_management_mode?: string;
