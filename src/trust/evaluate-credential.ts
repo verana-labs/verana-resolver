@@ -55,7 +55,7 @@ export async function evaluateCredential(
     let schemaInfo: CredentialSchemaInfo | undefined;
 
     if (vtjscId) {
-      logger.debug({ vcId: vc.vcId, vtjscId }, 'Resolving VTJSC to CredentialSchema');
+      logger.info({ vcId: vc.vcId, vtjscId }, 'Resolving schema reference to on-chain CredentialSchema');
       schema = await resolveVtjscToSchema(vtjscId, indexer, ctx.currentBlock);
       if (schema) {
         const ecosystemDid = await resolveEcosystemDid(schema.tr_id, indexer, ctx.currentBlock);
@@ -67,12 +67,12 @@ export async function evaluateCredential(
           ecosystemAka,
           issuerPermManagementMode: schema.issuer_perm_management_mode,
         };
-        logger.debug({ vcId: vc.vcId, schemaId: schema.id, ecosystemDid, ecosystemAka: ecosystemAka ?? 'none' }, 'CredentialSchema resolved');
+        logger.info({ vcId: vc.vcId, onChainSchemaId: schema.id, trId: schema.tr_id, ecosystemDid, ecosystemAka: ecosystemAka ?? 'none', jsonSchema: schema.json_schema }, 'CredentialSchema resolved OK');
       } else {
-        logger.debug({ vcId: vc.vcId, vtjscId }, 'CredentialSchema not found for VTJSC');
+        logger.warn({ vcId: vc.vcId, vtjscId }, 'CredentialSchema NOT found on-chain for schema reference');
       }
     } else {
-      logger.debug({ vcId: vc.vcId }, 'No VTJSC/credentialSchemaId on credential');
+      logger.warn({ vcId: vc.vcId, credentialSchemaId: (vc.vc.credentialSchema as Record<string, unknown>)?.id ?? 'none', credentialSubjectId: (vc.vc.credentialSubject as Record<string, unknown>)?.id ?? 'none' }, 'No VPR URI or credentialSchemaId found on credential');
     }
 
     // 3. Determine ECS type from VTJSC URI
@@ -118,8 +118,18 @@ export async function evaluateCredential(
     }
 
     if (!issuerPermission) {
-      const error = `No active ISSUER permission found for issuer ${vc.issuerDid} on schema ${schema?.id ?? 'unknown'}`;
-      logger.debug({ vcId: vc.vcId, issuerDid: vc.issuerDid, schemaId: schema?.id }, 'ISSUER permission NOT found \u2014 credential FAILED');
+      const reason = !schema
+        ? `schema not found on-chain (vtjscId=${vtjscId ?? 'none'})`
+        : `no active ISSUER permission for did=${vc.issuerDid} on schema_id=${schema.id}`;
+      const error = `ISSUER_NOT_AUTHORIZED: ${reason}`;
+      logger.warn({
+        vcId: vc.vcId,
+        issuerDid: vc.issuerDid,
+        vtjscId: vtjscId ?? 'none',
+        onChainSchemaId: schema?.id ?? 'none',
+        schemaFound: !!schema,
+        reason,
+      }, 'ISSUER permission NOT found \u2014 credential FAILED');
       return {
         failed: {
           id: vc.vcId,
@@ -129,7 +139,7 @@ export async function evaluateCredential(
         },
       };
     }
-    logger.debug({ vcId: vc.vcId, permissionId: issuerPermission.id, permState: issuerPermission.perm_state }, 'ISSUER permission found');
+    logger.info({ vcId: vc.vcId, permissionId: issuerPermission.id, permState: issuerPermission.perm_state, schemaId: schema!.id }, 'ISSUER permission found');
 
     // 6. Build permission chain
     let permissionChain = schemaInfo
@@ -199,18 +209,42 @@ export async function evaluateCredential(
 
 // --- Helpers ---
 
+// Parse a VPR URI like vpr:verana:vna-testnet-1/cs/v1/js/47
+// Returns the JSON schema ID (e.g. '47') or null if not a VPR URI.
+function parseVprJsonSchemaId(uri: string): string | null {
+  const match = uri.match(/^vpr:verana:[^/]+\/cs\/v1\/js\/(\d+)$/);
+  return match ? match[1] : null;
+}
+
 async function resolveVtjscToSchema(
   vtjscId: string,
   indexer: IndexerClient,
   atBlock?: number,
 ): Promise<CredentialSchema | undefined> {
-  // The Indexer doesn't support filtering by json_schema directly,
-  // so we list all schemas and filter client-side.
-  // In production, this should be cached per trust registry.
+  // 1. If vtjscId is a VPR URI, resolve via indexer /verana/cs/v1/js/{id}
+  const jsId = parseVprJsonSchemaId(vtjscId);
+  if (jsId) {
+    try {
+      logger.debug({ vtjscId, jsId }, 'Resolving VPR URI via indexer /verana/cs/v1/js/{id}');
+      const resp = await indexer.getCredentialSchemaByJsonSchemaId(jsId, atBlock);
+      return resp.credential_schema;
+    } catch (err) {
+      logger.debug({ vtjscId, jsId, error: err instanceof Error ? err.message : String(err) }, 'VPR URI resolution failed');
+      return undefined;
+    }
+  }
+
+  // 2. Otherwise, try matching by json_schema field (e.g. VTJSC URL)
   try {
-    const resp = await indexer.listCredentialSchemas({}, atBlock);
-    return resp.credential_schemas.find((s) => s.json_schema === vtjscId);
-  } catch {
+    logger.debug({ vtjscId }, 'Resolving schema reference via listCredentialSchemas filter');
+    const resp = await indexer.listCredentialSchemas({ json_schema: vtjscId }, atBlock);
+    if (resp.credential_schemas.length > 0) {
+      return resp.credential_schemas[0];
+    }
+    logger.debug({ vtjscId, schemasReturned: resp.credential_schemas.length }, 'No on-chain schema matched json_schema filter');
+    return undefined;
+  } catch (err) {
+    logger.debug({ vtjscId, error: err instanceof Error ? err.message : String(err) }, 'listCredentialSchemas failed');
     return undefined;
   }
 }

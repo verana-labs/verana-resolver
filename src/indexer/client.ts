@@ -74,6 +74,13 @@ export class IndexerClient {
     return this.get<CredentialSchemaResponse>(`/verana/cs/v1/get/${id}`, {}, atBlock);
   }
 
+  async getCredentialSchemaByJsonSchemaId(
+    jsId: string,
+    atBlock?: number,
+  ): Promise<CredentialSchemaResponse> {
+    return this.get<CredentialSchemaResponse>(`/verana/cs/v1/js/${jsId}`, {}, atBlock);
+  }
+
   async listCredentialSchemas(
     params: ListCredentialSchemasParams = {},
     atBlock?: number,
