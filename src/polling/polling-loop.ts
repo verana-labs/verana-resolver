@@ -7,6 +7,7 @@ import { runPass2 } from './pass2.js';
 import { getRetryEligible, removeReattemptable, cleanupExpiredRetries } from './reattemptable.js';
 import { markUntrusted } from '../trust/trust-store.js';
 import { getPool } from '../db/index.js';
+import { IndexerWebSocket } from './indexer-ws.js';
 import pino from 'pino';
 
 const logger = pino({ name: 'polling-loop' });
@@ -29,6 +30,10 @@ export async function startPollingLoop(opts: PollingLoopOptions): Promise<void> 
 
   logger.info('Acquired leader lock \u2014 starting polling loop');
 
+  // Connect to Indexer WebSocket for real-time block notifications.
+  // Falls back to POLL_INTERVAL timeout if the WebSocket is unavailable.
+  const ws = new IndexerWebSocket(config.INDEXER_API, signal);
+
   try {
     while (!signal?.aborted) {
       try {
@@ -37,10 +42,14 @@ export async function startPollingLoop(opts: PollingLoopOptions): Promise<void> 
         logger.error({ err }, 'Polling cycle error');
       }
 
-      // Sleep for POLL_INTERVAL seconds
-      await sleep(config.POLL_INTERVAL * 1000, signal);
+      // Wait for a WebSocket block-processed event or POLL_INTERVAL timeout
+      const gotEvent = await ws.waitForBlock(config.POLL_INTERVAL * 1000);
+      if (gotEvent) {
+        logger.debug('Woke up by WebSocket block-processed event');
+      }
     }
   } finally {
+    ws.close();
     logger.info('Releasing leader lock');
     await releaseLeaderLock();
   }
@@ -174,14 +183,4 @@ async function refreshExpiredEvaluations(
 
   await runPass1(expiredDids, indexer);
   await runPass2(expiredDids, indexer, currentBlock, config.TRUST_TTL, allowedEcosystemDids);
-}
-
-function sleep(ms: number, signal?: AbortSignal): Promise<void> {
-  return new Promise((resolve) => {
-    const timer = setTimeout(resolve, ms);
-    signal?.addEventListener('abort', () => {
-      clearTimeout(timer);
-      resolve();
-    }, { once: true });
-  });
 }
