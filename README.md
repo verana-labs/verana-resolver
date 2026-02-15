@@ -47,13 +47,14 @@ The **Verana Trust Resolver** is a core infrastructure component of the [Verana]
 | `CACHE_TTL` | `86400` | Dereferenced object cache TTL in seconds (24h) |
 | `TRUST_TTL` | `3600` | Trust evaluation result TTL in seconds (1h) |
 | `POLL_OBJECT_CACHING_RETRY_DAYS` | `7` | Maximum retry window for failed dereferencing (days) |
+| `DISABLE_DIGEST_SRI_VERIFICATION` | `false` | When `true`, skip digestSRI verification of JSON schema content and log that it was omitted |
 
 ## Tech Stack
 
 - **Runtime**: Node.js 22
 - **Language**: TypeScript
 - **Web framework**: Fastify
-- **SSI framework**: Credo-ts (OpenWallet Foundation)
+- **SSI**: Direct crypto (Ed25519, JWT via jose), DIF DID resolvers (did:web, did:webvh)
 - **Database**: PostgreSQL
 - **Cache**: Redis
 - **Testing**: Vitest
