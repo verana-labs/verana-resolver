@@ -4,6 +4,7 @@ import { deleteCachedFile } from '../cache/file-cache.js';
 import { resolveDID } from '../ssi/did-resolver.js';
 import { dereferenceAllVPs } from '../ssi/vp-dereferencer.js';
 import { addReattemptable } from './reattemptable.js';
+import { markUntrusted } from '../trust/trust-store.js';
 import pino from 'pino';
 
 const logger = pino({ name: 'pass1' });
@@ -45,9 +46,18 @@ export function extractAffectedDids(activity: ActivityItem[]): Set<string> {
   return dids;
 }
 
+const PERMANENT_DID_ERRORS = ['notFound', 'invalidDid', 'methodNotSupported'];
+
+function isPermanentDIDError(error: string | undefined): boolean {
+  if (!error) return false;
+  return PERMANENT_DID_ERRORS.some((pe) => error.includes(pe));
+}
+
 export async function runPass1(
   affectedDids: Set<string>,
   _indexer: IndexerClient,
+  currentBlock = 0,
+  trustTtlSeconds = 3600,
 ): Promise<{ succeeded: string[]; failed: string[] }> {
   const succeeded: string[] = [];
   const failed: string[] = [];
@@ -60,8 +70,15 @@ export async function runPass1(
       // 2. Re-resolve DID Document (will re-cache)
       const didResult = await resolveDID(did);
       if (didResult.error || !didResult.result) {
-        logger.warn({ did, error: didResult.error?.error }, 'Pass1: DID resolution failed');
-        await addReattemptable(did, 'DID_DOC', 'TRANSIENT');
+        const errorMsg = didResult.error?.error;
+        if (isPermanentDIDError(errorMsg)) {
+          logger.warn({ did, error: errorMsg }, 'Pass1: permanent DID resolution failure \u2014 marking UNTRUSTED');
+          await markUntrusted(did, currentBlock, trustTtlSeconds);
+          await addReattemptable(did, 'DID_DOC', 'PERMANENT');
+        } else {
+          logger.warn({ did, error: errorMsg }, 'Pass1: DID resolution failed');
+          await addReattemptable(did, 'DID_DOC', 'TRANSIENT');
+        }
         failed.push(did);
         continue;
       }

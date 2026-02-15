@@ -221,6 +221,7 @@ describe('pollOnce', () => {
 
   vi.mock('../src/trust/trust-store.js', () => ({
     upsertTrustResult: vi.fn().mockResolvedValue(undefined),
+    markUntrusted: vi.fn().mockResolvedValue(undefined),
     getSummaryTrustResult: vi.fn(),
     getFullTrustResult: vi.fn(),
   }));

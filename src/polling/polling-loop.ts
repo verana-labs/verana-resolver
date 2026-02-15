@@ -5,6 +5,7 @@ import { getLastProcessedBlock, setLastProcessedBlock } from './resolver-state.j
 import { extractAffectedDids, runPass1 } from './pass1.js';
 import { runPass2 } from './pass2.js';
 import { getRetryEligible, removeReattemptable, cleanupExpiredRetries } from './reattemptable.js';
+import { markUntrusted } from '../trust/trust-store.js';
 import { getPool } from '../db/index.js';
 import pino from 'pino';
 
@@ -73,10 +74,10 @@ export async function pollOnce(
       logger.info({ block: target, dids: affectedDids.size }, 'Processing block');
 
       // Pass1: dereference affected DIDs
-      await runPass1(affectedDids, indexer);
+      await runPass1(affectedDids, indexer, target, config.TRUST_TTL);
 
       // Retry eligible Pass1 failures
-      await retryEligiblePass1(indexer, config);
+      await retryEligiblePass1(indexer, target, config);
 
       // Pass2: re-evaluate trust
       await runPass2(affectedDids, indexer, target, config.TRUST_TTL);
@@ -96,10 +97,15 @@ export async function pollOnce(
   // 3. TTL-driven refresh (does NOT advance lastProcessedBlock)
   await refreshExpiredEvaluations(indexer, lastBlock, config);
 
-  // 4. Cleanup permanently failed retries
+  // 4. Cleanup permanently failed retries \u2192 mark UNTRUSTED
   const expired = await cleanupExpiredRetries(config.POLL_OBJECT_CACHING_RETRY_DAYS);
   if (expired.length > 0) {
-    logger.info({ count: expired.length }, 'Cleaned up expired reattemptable resources');
+    for (const resourceId of expired) {
+      if (resourceId.startsWith('did:')) {
+        await markUntrusted(resourceId, lastBlock, config.TRUST_TTL);
+      }
+    }
+    logger.info({ count: expired.length }, 'Cleaned up expired reattemptable resources \u2014 marked UNTRUSTED');
   }
 
   return { blocksProcessed, didsAffected };
@@ -107,6 +113,7 @@ export async function pollOnce(
 
 async function retryEligiblePass1(
   indexer: IndexerClient,
+  currentBlock: number,
   config: EnvConfig,
 ): Promise<void> {
   const eligible = await getRetryEligible(config.POLL_OBJECT_CACHING_RETRY_DAYS);
@@ -117,7 +124,7 @@ async function retryEligiblePass1(
   if (pass1Eligible.length === 0) return;
 
   const dids = new Set(pass1Eligible.map((r) => r.resourceId));
-  const result = await runPass1(dids, indexer);
+  const result = await runPass1(dids, indexer, currentBlock, config.TRUST_TTL);
 
   // Remove successfully retried resources
   for (const did of result.succeeded) {
