@@ -1,6 +1,6 @@
 import { Agent, DidsModule, WebDidResolver, W3cCredentialsModule } from '@credo-ts/core';
 import { agentDependencies } from '@credo-ts/node';
-import { WebVhModule } from '@credo-ts/webvh';
+import { WebVhModule, WebVhDidResolver } from '@credo-ts/webvh';
 import { DrizzleStorageModule } from '@credo-ts/drizzle-storage';
 import { coreBundle } from '@credo-ts/drizzle-storage/core';
 import { drizzle } from 'drizzle-orm/node-postgres';
@@ -20,7 +20,7 @@ export async function initializeAgent(postgresUrl: string): Promise<Agent> {
         bundles: [coreBundle],
       }),
       dids: new DidsModule({
-        resolvers: [new WebDidResolver()],
+        resolvers: [new WebDidResolver(), new WebVhDidResolver()],
       }),
       w3cCredentials: new W3cCredentialsModule(),
       webVh: new WebVhModule(),
