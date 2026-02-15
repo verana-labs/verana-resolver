@@ -1,7 +1,7 @@
 import type { IndexerClient } from '../indexer/client.js';
 import type { DereferencedVC } from '../ssi/types.js';
 import type { CredentialSchema, Permission } from '../indexer/types.js';
-import { computeDigestSRI } from '../ssi/digest.js';
+import { computeDigestSRI, verifySriDigest } from '../ssi/digest.js';
 import { verifyW3cCredential, verifyAnonCredsCredential } from '../ssi/vc-verifier.js';
 import { buildPermissionChain } from './permission-chain.js';
 import type {
@@ -73,6 +73,34 @@ export async function evaluateCredential(
       }
     } else {
       logger.warn({ vcId: vc.vcId, credentialSchemaId: (vc.vc.credentialSchema as Record<string, unknown>)?.id ?? 'none', credentialSubjectId: (vc.vc.credentialSubject as Record<string, unknown>)?.id ?? 'none' }, 'No VPR URI or credentialSchemaId found on credential');
+    }
+
+    // 2b. Verify digestSRI of the JSON schema content from the VPR
+    const subject = vc.vc.credentialSubject as Record<string, unknown> | undefined;
+    const expectedDigestSri = typeof subject?.digestSRI === 'string' ? subject.digestSRI as string : undefined;
+    if (expectedDigestSri && vtjscId && schema) {
+      const jsId = parseVprJsonSchemaId(vtjscId);
+      if (jsId) {
+        try {
+          const jsonSchemaContent = await indexer.fetchJsonSchemaContent(jsId, ctx.currentBlock);
+          const digestResult = await verifySriDigest(jsonSchemaContent, expectedDigestSri);
+          if (!digestResult.valid) {
+            const error = `JSON schema digestSRI mismatch: expected=${expectedDigestSri}, computed=${digestResult.computed ?? 'unknown'}`;
+            logger.warn({ vcId: vc.vcId, vtjscId, jsId, expected: expectedDigestSri, computed: digestResult.computed }, 'JSON schema digestSRI verification FAILED');
+            return {
+              failed: {
+                id: vc.vcId,
+                format: formatToString(vc.format),
+                error,
+                errorCode: 'DIGEST_SRI_MISMATCH',
+              },
+            };
+          }
+          logger.debug({ vcId: vc.vcId, digestSri: expectedDigestSri }, 'JSON schema digestSRI verified OK');
+        } catch (err) {
+          logger.warn({ vcId: vc.vcId, jsId, error: err instanceof Error ? err.message : String(err) }, 'Failed to fetch JSON schema content for digestSRI verification');
+        }
+      }
     }
 
     // 3. Determine ECS type from VTJSC URI
