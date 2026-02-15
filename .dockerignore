@@ -1,0 +1,48 @@
+# Dependencies
+node_modules
+.pnp
+.pnp.js
+
+# Build outputs
+dist
+
+# Git
+.git
+.gitignore
+
+# IDE
+.idea
+.vscode
+*.swp
+*.swo
+
+# Debug
+npm-debug.log*
+
+# Environment files
+.env*.local
+
+# Documentation
+*.md
+!README.md
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Test files
+*.test.ts
+*.test.tsx
+*.spec.ts
+*.spec.tsx
+test/
+coverage/
+
+# Spec/design docs
+spec.md
+trust-resolution.md
+implementation-plan.md
+old/
+
+# CI/CD
+.github/
