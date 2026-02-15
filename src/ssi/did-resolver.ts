@@ -1,3 +1,4 @@
+import { createPublicKey, verify } from 'node:crypto';
 import { Resolver } from 'did-resolver';
 import { getResolver as getWebDidResolver } from 'web-did-resolver';
 import { resolveDID as resolveWebVh } from 'didwebvh-ts';
@@ -9,6 +10,19 @@ const logger = pino({ name: 'did-resolver' });
 
 // did:web resolver via DIF web-did-resolver
 const webResolver = new Resolver(getWebDidResolver());
+
+// Ed25519 verifier for didwebvh-ts (uses Node.js built-in crypto)
+const ED25519_SPKI_PREFIX = Buffer.from([0x30, 0x2a, 0x30, 0x05, 0x06, 0x03, 0x2b, 0x65, 0x70, 0x03, 0x21, 0x00]);
+const ed25519Verifier: { verify(signature: Uint8Array, message: Uint8Array, publicKey: Uint8Array): Promise<boolean> } = {
+  async verify(signature: Uint8Array, message: Uint8Array, publicKey: Uint8Array): Promise<boolean> {
+    const key = createPublicKey({
+      key: Buffer.concat([ED25519_SPKI_PREFIX, Buffer.from(publicKey)]),
+      format: 'der',
+      type: 'spki',
+    });
+    return verify(null, message, key, signature);
+  },
+};
 
 export async function resolveDID(did: string): Promise<{
   result?: ResolvedDIDDocument;
@@ -115,7 +129,7 @@ async function resolveDidWebVh(did: string): Promise<{
   result?: ResolvedDIDDocument;
   error?: DereferenceError;
 }> {
-  const resolution = await resolveWebVh(did);
+  const resolution = await resolveWebVh(did, { verifier: ed25519Verifier });
 
   if (resolution.meta?.error || !resolution.doc) {
     const error = resolution.meta?.error ?? 'DID Document not found';
