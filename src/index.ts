@@ -14,6 +14,7 @@ import { runMigrations } from './db/migrate.js';
 import { connectRedis, disconnectRedis } from './cache/redis-client.js';
 import { startPollingLoop } from './polling/polling-loop.js';
 import { createInjectDidRoute } from './routes/inject-did.js';
+import { registerSwagger } from './swagger.js';
 import pino from 'pino';
 
 const logger = pino({ name: 'main' });
@@ -54,6 +55,9 @@ async function main(): Promise<void> {
     }
     done();
   });
+
+  // OpenAPI + Swagger UI
+  await registerSwagger(server);
 
   // Health + readiness
   await registerHealthRoutes(server);

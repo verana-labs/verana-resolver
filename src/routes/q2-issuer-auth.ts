@@ -14,6 +14,28 @@ export function createQ2Route(indexer: IndexerClient) {
   return async function registerQ2Route(server: FastifyInstance): Promise<void> {
     server.get<{ Querystring: Q2QueryString }>(
       '/v1/trust/issuer-authorization',
+      {
+        schema: {
+          tags: ['Trust'],
+          summary: 'Check issuer authorization for a credential schema',
+          description: 'Verifies whether a DID holds an active ISSUER permission for a given VTJSC (credential schema). Optionally validates a payment session.',
+          querystring: {
+            type: 'object',
+            properties: {
+              did: { type: 'string', description: 'Issuer DID' },
+              vtjscId: { type: 'string', description: 'VTJSC (JSON Schema ID) of the credential' },
+              sessionId: { type: 'string', description: 'Optional PermissionSession ID for fee payment' },
+              at: { type: 'string', description: 'Optional block height for point-in-time query' },
+            },
+          },
+          response: {
+            200: { type: 'object', additionalProperties: true, description: 'Authorization result' },
+            400: { type: 'object', properties: { error: { type: 'string' }, message: { type: 'string' } } },
+            402: { type: 'object', additionalProperties: true, description: 'Payment required' },
+            404: { type: 'object', properties: { error: { type: 'string' }, message: { type: 'string' } } },
+          },
+        },
+      },
       async (request: FastifyRequest<{ Querystring: Q2QueryString }>, reply: FastifyReply) => {
         const { did, vtjscId, sessionId, at } = request.query;
 
