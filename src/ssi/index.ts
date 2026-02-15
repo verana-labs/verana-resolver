@@ -1,4 +1,3 @@
-export { initializeAgent, getAgent, shutdownAgent } from './agent.js';
 export { resolveDID } from './did-resolver.js';
 export { extractLinkedVPEndpoints, dereferenceVP, dereferenceAllVPs } from './vp-dereferencer.js';
 export {

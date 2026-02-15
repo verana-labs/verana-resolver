@@ -8,7 +8,6 @@ import { createQ4Route } from './routes/q4-ecosystem-participant.js';
 import { registerHealthRoutes } from './routes/health.js';
 import { IndexerClient } from './indexer/client.js';
 import { registry, queryDurationSeconds } from './observability/metrics.js';
-import { initializeAgent, shutdownAgent } from './ssi/agent.js';
 import { getPool, closePool } from './db/index.js';
 import { runMigrations } from './db/migrate.js';
 import { connectRedis, disconnectRedis } from './cache/redis-client.js';
@@ -22,12 +21,7 @@ const logger = createLogger('main');
 async function main(): Promise<void> {
   const config = loadConfig();
 
-  // 1. Initialize Credo SSI agent (W3C VC verification only; DID resolution uses DIF libraries)
-  const postgresUrl = `postgresql://${config.POSTGRES_USER}:${config.POSTGRES_PASSWORD}@${config.POSTGRES_HOST}:${config.POSTGRES_PORT}/${config.POSTGRES_DB}`;
-  logger.info('Initializing SSI agent...');
-  await initializeAgent(postgresUrl);
-
-  // 2. Connect to PostgreSQL and run pending migrations
+  // 1. Connect to PostgreSQL and run pending migrations
   logger.info('Connecting to PostgreSQL and running migrations...');
   const pool = getPool();
   const applied = await runMigrations(pool);
@@ -35,7 +29,7 @@ async function main(): Promise<void> {
     logger.info({ migrations: applied }, 'Applied database migrations');
   }
 
-  // 3. Connect to Redis (file cache for DID docs, VPs, VCs)
+  // 2. Connect to Redis (file cache for DID docs, VPs, VCs)
   logger.info('Connecting to Redis...');
   await connectRedis();
 
@@ -82,7 +76,7 @@ async function main(): Promise<void> {
     logger.info('Dev endpoint enabled: POST /v1/inject/did');
   }
 
-  // 4. Start polling loop for leader instances (if polling is enabled)
+  // 3. Start polling loop for leader instances (if polling is enabled)
   const abortController = new AbortController();
   if (config.INSTANCE_ROLE === 'leader' && config.ENABLE_POLLING) {
     startPollingLoop({
@@ -96,12 +90,11 @@ async function main(): Promise<void> {
     logger.info('Polling is disabled (ENABLE_POLLING=false)');
   }
 
-  // 5. Graceful shutdown
+  // 4. Graceful shutdown
   const shutdown = async (signal: string) => {
     logger.info({ signal }, 'Shutdown signal received');
     abortController.abort();
     await server.close();
-    await shutdownAgent();
     await disconnectRedis();
     await closePool();
     logger.info('Shutdown complete');
