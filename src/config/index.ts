@@ -3,6 +3,10 @@ import { z } from 'zod';
 const InstanceRole = z.enum(['leader', 'reader']);
 const LogLevel = z.enum(['debug', 'info', 'warn', 'error']);
 
+const booleanFromEnv = z
+  .union([z.boolean(), z.string()])
+  .transform((val) => (typeof val === 'string' ? val === 'true' || val === '1' : val));
+
 const envSchema = z.object({
   // spec.md §5.2 — Container Variables
   POLL_INTERVAL: z.coerce.number().int().positive().default(5),
@@ -26,10 +30,10 @@ const envSchema = z.object({
   ECS_ECOSYSTEM_DIDS: z.string().min(1),
 
   // Polling
-  ENABLE_POLLING: z.coerce.boolean().default(true),
+  ENABLE_POLLING: booleanFromEnv.default(true),
 
   // Dev mode
-  INJECT_DID_ENDPOINT_ENABLED: z.coerce.boolean().default(false),
+  INJECT_DID_ENDPOINT_ENABLED: booleanFromEnv.default(false),
 
   // Server
   PORT: z.coerce.number().int().positive().default(3000),
