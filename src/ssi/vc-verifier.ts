@@ -3,7 +3,6 @@ import jsonld from '@digitalcredentials/jsonld';
 import { base58 } from '@scure/base';
 import * as jose from 'jose';
 import { resolveDID } from './did-resolver.js';
-import { createDocumentLoader } from './jsonld-document-loader.js';
 import { createLogger } from '../logger.js';
 import type { DereferencedVC } from './types.js';
 
@@ -16,9 +15,6 @@ const ED25519_SPKI_PREFIX = Buffer.from([
 
 // Ed25519 multicodec prefix: 0xed01
 const ED25519_MULTICODEC_PREFIX = new Uint8Array([0xed, 0x01]);
-
-// Singleton document loader
-const documentLoader = createDocumentLoader();
 
 // ---------------------------------------------------------------------------
 // Public helpers (unchanged API)
@@ -90,7 +86,7 @@ export function extractCredentialSchemaId(vc: Record<string, unknown>): string |
 }
 
 // ---------------------------------------------------------------------------
-// W3C Credential verification — direct crypto (no Credo)
+// W3C Credential verification \u2014 direct crypto (no Credo)
 // ---------------------------------------------------------------------------
 
 export async function verifyW3cCredential(
@@ -115,7 +111,7 @@ export async function verifyW3cCredential(
 //   3. Canonicalize document (without proof)
 //   4. verifyData = SHA-256(proofOptionsNQuads) || SHA-256(documentNQuads)
 //   5. Decode proofValue from multibase base58 ('z' prefix)
-//   6. Resolve verification method DID → extract public key
+//   6. Resolve verification method DID \u2192 extract public key
 //   7. Verify Ed25519 signature over verifyData
 // ---------------------------------------------------------------------------
 
@@ -150,19 +146,17 @@ async function verifyJsonLdCredential(
   const document: Record<string, unknown> = { ...vc };
   delete document.proof;
 
-  // 3. Canonicalize both
+  // 3. Canonicalize both (use default document loader to match issuer's behavior)
   const [proofNQuads, docNQuads] = await Promise.all([
     jsonld.canonize(proofOptions, {
       algorithm: 'URDNA2015',
       format: 'application/n-quads',
       safe: false,
-      documentLoader,
     }),
     jsonld.canonize(document, {
       algorithm: 'URDNA2015',
       format: 'application/n-quads',
       safe: false,
-      documentLoader,
     }),
   ]);
 
@@ -174,7 +168,7 @@ async function verifyJsonLdCredential(
   // 5. Decode signature from multibase base58
   const signatureBytes = base58.decode(proofValue.slice(1));
 
-  // 6. Resolve verification method → extract public key
+  // 6. Resolve verification method \u2192 extract public key
   const publicKeyBytes = await resolvePublicKey(verificationMethodId);
   if (!publicKeyBytes) {
     return { verified: false, error: `Cannot resolve verification method: ${verificationMethodId}` };
@@ -227,7 +221,7 @@ async function verifyJwtCredential(
 
   // Verify JWT
   const { payload } = await jose.jwtVerify(jwt, key, {
-    // Skip clock tolerance checks — credential validity is checked elsewhere
+    // Skip clock tolerance checks \u2014 credential validity is checked elsewhere
     clockTolerance: Infinity,
   });
 
