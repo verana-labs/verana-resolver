@@ -26,6 +26,7 @@
     "@credo-ts/webvh": "^0.6.2",
     "@fastify/cors": "^11.0.0",
     "canonicalize": "^2.0.0",
+    "dotenv": "^17.3.1",
     "fastify": "^5.2.1",
     "ioredis": "^5.4.2",
     "jose": "^6.1.3",
