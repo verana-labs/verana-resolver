@@ -68,6 +68,16 @@ export function extractIssuerDid(vc: Record<string, unknown>): string {
 }
 
 export function extractCredentialSchemaId(vc: Record<string, unknown>): string | undefined {
+  // 1. For JsonSchemaCredentials (VTJSCs): the VPR URI is in credentialSubject.id
+  const subject = vc.credentialSubject;
+  if (typeof subject === 'object' && subject !== null) {
+    const subjectId = (subject as Record<string, unknown>).id;
+    if (typeof subjectId === 'string' && subjectId.startsWith('vpr:')) {
+      return subjectId;
+    }
+  }
+
+  // 2. For regular VCs: credentialSchema.id points to the VTJSC URL
   const credentialSchema = vc.credentialSchema;
   if (!credentialSchema) {
     // AnonCreds: check relatedJsonSchemaCredentialId
