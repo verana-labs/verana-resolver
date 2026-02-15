@@ -76,6 +76,12 @@ export async function dereferenceVP(vpUrl: string): Promise<{
     const credentials = extractCredentialsFromVP(vpJson);
 
     logger.debug({ vpUrl, credentials: credentials.length }, 'VP fetched successfully');
+    for (const cred of credentials) {
+      logger.debug(
+        { vpUrl, vcId: cred.vcId, format: cred.format, issuer: cred.issuerDid, schemaId: cred.credentialSchemaId ?? 'none' },
+        'VP contains credential',
+      );
+    }
 
     const dereferenced: DereferencedVP = {
       vpUrl,
@@ -124,6 +130,20 @@ export async function dereferenceAllVPs(
 
   const totalCreds = vps.reduce((sum, vp) => sum + vp.credentials.length, 0);
   logger.debug({ vpsOk: vps.length, vpsFailed: errors.length, totalCredentials: totalCreds }, 'VP dereference complete');
+
+  // Per-VP summary
+  for (const vp of vps) {
+    logger.debug(
+      { vpUrl: vp.vpUrl, credentials: vp.credentials.length, vcIds: vp.credentials.map((c) => c.vcId) },
+      'VP summary: OK',
+    );
+  }
+  for (const err of errors) {
+    logger.debug(
+      { vpUrl: err.resource, error: err.error, message: err.message ?? 'none' },
+      'VP summary: FAILED',
+    );
+  }
 
   return { vps, errors };
 }

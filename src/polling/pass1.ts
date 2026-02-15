@@ -105,6 +105,21 @@ export async function runPass1(
       }
 
       const totalCreds = vps.reduce((sum, vp) => sum + vp.credentials.length, 0);
+
+      // Per-VP/VC debug summary
+      for (const vp of vps) {
+        logger.debug(
+          { did, vpUrl: vp.vpUrl, credentials: vp.credentials.length },
+          'Pass1: VP dereferenced OK',
+        );
+        for (const cred of vp.credentials) {
+          logger.debug(
+            { did, vpUrl: vp.vpUrl, vcId: cred.vcId, format: cred.format, issuer: cred.issuerDid, schemaId: cred.credentialSchemaId ?? 'none' },
+            'Pass1: VC found',
+          );
+        }
+      }
+
       logger.info({ did, vpsOk: vps.length, vpsFailed: vpErrors.length, credentials: totalCreds }, 'Pass1: DID processed OK');
       succeeded.push(did);
     } catch (err) {
