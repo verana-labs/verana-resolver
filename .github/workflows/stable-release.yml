@@ -34,9 +34,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+<<<<<<< HEAD
       - name: Setup Helm
         uses: azure/setup-helm@v3
 
+=======
+>>>>>>> 9d5803a (ops: add GitHub Actions workflows (lint-pr, dev-release, stable-release))
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -58,6 +61,7 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+<<<<<<< HEAD
       - name: Log in to Docker Hub Helm Registry
         run: |
           echo "${{ secrets.DOCKER_HUB_PWD }}" | helm registry login -u "${{ secrets.DOCKER_HUB_LOGIN }}" --password-stdin docker.io
@@ -69,13 +73,18 @@ jobs:
           helm package ./charts --version ${{ needs.release-please.outputs.tag_name }} -d ./charts
           helm push ./charts/$CHART_NAME-${{ needs.release-please.outputs.tag_name }}.tgz oci://docker.io/"${{ secrets.DOCKER_HUB_LOGIN }}"
 
+=======
+>>>>>>> 9d5803a (ops: add GitHub Actions workflows (lint-pr, dev-release, stable-release))
       - name: Publish Summary
         run: |
           echo "Docker Images" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "- verana-resolver:latest" >> $GITHUB_STEP_SUMMARY
           echo "- verana-resolver:${{ needs.release-please.outputs.tag_name }}" >> $GITHUB_STEP_SUMMARY
+<<<<<<< HEAD
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "Helm Charts" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "- verana-resolver-chart:${{ needs.release-please.outputs.tag_name }}" >> $GITHUB_STEP_SUMMARY
+=======
+>>>>>>> 9d5803a (ops: add GitHub Actions workflows (lint-pr, dev-release, stable-release))
