@@ -74,13 +74,14 @@ export async function runPass1(
       logger.debug({ did }, 'Pass1: resolving DID document');
       const didResult = await resolveDID(did);
       if (didResult.error || !didResult.result) {
-        const errorMsg = didResult.error?.error;
-        if (isPermanentDIDError(errorMsg)) {
-          logger.warn({ did, error: errorMsg }, 'Pass1: permanent DID resolution failure \u2014 marking UNTRUSTED');
+        const errorCode = didResult.error?.error;
+        const errorMessage = didResult.error?.message;
+        if (isPermanentDIDError(errorCode)) {
+          logger.warn({ did, error: errorCode, message: errorMessage }, 'Pass1: permanent DID resolution failure \u2014 marking UNTRUSTED');
           await markUntrusted(did, currentBlock, trustTtlSeconds);
           await addReattemptable(did, 'DID_DOC', 'PERMANENT');
         } else {
-          logger.warn({ did, error: errorMsg }, 'Pass1: DID resolution failed (transient)');
+          logger.warn({ did, error: errorCode, message: errorMessage }, 'Pass1: DID resolution failed (transient)');
           await addReattemptable(did, 'DID_DOC', 'TRANSIENT');
         }
         failed.push(did);

@@ -45,12 +45,14 @@ export async function resolveDID(did: string): Promise<{
 
     if (resolution.didResolutionMetadata.error || !resolution.didDocument) {
       const error = resolution.didResolutionMetadata.error ?? 'DID Document not found';
-      logger.debug({ did, error }, 'DID resolution failed');
+      const message = (resolution.didResolutionMetadata as Record<string, unknown>).message as string | undefined;
+      logger.debug({ did, error, message: message ?? 'none' }, 'DID resolution failed');
       return {
         error: {
           resource: did,
           resourceType: 'did-document',
           error,
+          message,
           timestamp: Date.now(),
         },
       };

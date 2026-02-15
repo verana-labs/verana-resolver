@@ -55,7 +55,8 @@ export async function resolveTrust(
   const didResult = await resolveDID(did);
   if (didResult.error || !didResult.result) {
     const error = didResult.error?.error ?? 'DID resolution failed';
-    logger.info({ did, error }, 'Trust evaluation \u2014 DID resolution failed \u2014 UNTRUSTED');
+    const message = didResult.error?.message;
+    logger.info({ did, error, message: message ?? 'none' }, 'Trust evaluation \u2014 DID resolution failed \u2014 UNTRUSTED');
     const unresolvedResult: TrustResult = {
       did,
       trustStatus: 'UNTRUSTED',
@@ -67,7 +68,7 @@ export async function resolveTrust(
       failedCredentials: [{
         id: did,
         format: 'N/A',
-        error,
+        error: message ? `${error}: ${message}` : error,
         errorCode: 'DID_RESOLUTION_FAILED',
       }],
     };
