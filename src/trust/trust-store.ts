@@ -43,6 +43,25 @@ export async function getFullTrustResult(did: string): Promise<TrustResult | nul
   return row.rows[0].full_result_json as TrustResult;
 }
 
+export async function markUntrusted(did: string, block: number, ttlSeconds: number): Promise<void> {
+  const pool = getPool();
+  const now = new Date();
+  const expiresAt = new Date(now.getTime() + ttlSeconds * 1000);
+
+  await pool.query(
+    `INSERT INTO trust_results (did, trust_status, production, evaluated_at, evaluated_block, expires_at, full_result_json)
+     VALUES ($1, 'UNTRUSTED', false, $2, $3, $4, NULL)
+     ON CONFLICT (did) DO UPDATE SET
+       trust_status = 'UNTRUSTED',
+       production = false,
+       evaluated_at = EXCLUDED.evaluated_at,
+       evaluated_block = EXCLUDED.evaluated_block,
+       expires_at = EXCLUDED.expires_at,
+       full_result_json = NULL`,
+    [did, now.toISOString(), block, expiresAt.toISOString()],
+  );
+}
+
 export async function upsertTrustResult(result: TrustResult): Promise<void> {
   const pool = getPool();
   const client = await pool.connect();
