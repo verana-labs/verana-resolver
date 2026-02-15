@@ -9,18 +9,27 @@ import type {
   FailedCredential,
   EvaluationContext,
 } from './types.js';
+import pino from 'pino';
+
+const logger = pino({ name: 'resolve-trust' });
 
 export async function resolveTrust(
   did: string,
   indexer: IndexerClient,
   ctx: EvaluationContext,
 ): Promise<TrustResult> {
+  logger.info({ did, block: ctx.currentBlock }, 'Trust evaluation started');
+
   // 1. Check in-memory memo
   const memoized = ctx.trustMemo.get(did);
-  if (memoized) return memoized;
+  if (memoized) {
+    logger.debug({ did, trustStatus: memoized.trustStatus }, 'Trust memo hit \u2014 returning cached result');
+    return memoized;
+  }
 
   // 2. Cycle detection
   if (ctx.visitedDids.has(did)) {
+    logger.warn({ did }, 'Circular reference detected \u2014 marking UNTRUSTED');
     const circular: TrustResult = {
       did,
       trustStatus: 'UNTRUSTED',
@@ -42,8 +51,11 @@ export async function resolveTrust(
   ctx.visitedDids.add(did);
 
   // 3. Resolve DID Document
+  logger.debug({ did }, 'Step 1/5: Resolving DID document');
   const didResult = await resolveDID(did);
   if (didResult.error || !didResult.result) {
+    const error = didResult.error?.error ?? 'DID resolution failed';
+    logger.info({ did, error }, 'Trust evaluation \u2014 DID resolution failed \u2014 UNTRUSTED');
     const unresolvedResult: TrustResult = {
       did,
       trustStatus: 'UNTRUSTED',
@@ -55,24 +67,30 @@ export async function resolveTrust(
       failedCredentials: [{
         id: did,
         format: 'N/A',
-        error: didResult.error?.error ?? 'DID resolution failed',
+        error,
         errorCode: 'DID_RESOLUTION_FAILED',
       }],
     };
     ctx.trustMemo.set(did, unresolvedResult);
     return unresolvedResult;
   }
+  logger.debug({ did }, 'Step 1/5: DID document resolved OK');
 
   const didDoc = didResult.result.didDocument;
 
   // 4. Dereference VPs and extract VCs
+  logger.debug({ did }, 'Step 2/5: Dereferencing VPs');
   const { vps, errors: vpErrors } = await dereferenceAllVPs(didDoc);
+
+  const totalVcCount = vps.reduce((sum, vp) => sum + vp.credentials.length, 0);
+  logger.debug({ did, vpsOk: vps.length, vpsFailed: vpErrors.length, totalCredentials: totalVcCount }, 'Step 2/5: VP dereference complete');
 
   const credentials: CredentialEvaluation[] = [];
   const failedCredentials: FailedCredential[] = [];
 
   // Convert VP dereference errors to failed credentials
   for (const vpErr of vpErrors) {
+    logger.debug({ did, vpUrl: vpErr.resource, error: vpErr.error }, 'VP dereference error \u2014 added to failed credentials');
     failedCredentials.push({
       id: vpErr.resource,
       uri: vpErr.resource,
@@ -83,6 +101,7 @@ export async function resolveTrust(
   }
 
   // 5. Evaluate each credential from all VPs
+  logger.debug({ did, totalCredentials: totalVcCount }, 'Step 3/5: Evaluating credentials');
   for (const vp of vps) {
     for (const vc of vp.credentials) {
       const evalResult = await evaluateCredential(vc, did, indexer, ctx);
@@ -97,8 +116,11 @@ export async function resolveTrust(
 
   // 6. Classify credentials
   const validCredentials = credentials.filter((c) => c.result === 'VALID');
+  const ignoredCredentials = credentials.filter((c) => c.result === 'IGNORED');
+  logger.debug({ did, valid: validCredentials.length, ignored: ignoredCredentials.length, failed: failedCredentials.length }, 'Step 3/5: Credential evaluation summary');
 
   // 7. Evaluate VS-REQ-2/3/4
+  logger.debug({ did }, 'Step 4/5: Evaluating VS requirements');
   const trustStatus = await evaluateVSRequirements(
     did,
     validCredentials,
@@ -122,6 +144,11 @@ export async function resolveTrust(
     credentials,
     failedCredentials,
   };
+
+  logger.info(
+    { did, trustStatus, production, validCredentials: validCredentials.length, failedCredentials: failedCredentials.length, block: ctx.currentBlock },
+    'Step 5/5: Trust evaluation complete',
+  );
 
   ctx.trustMemo.set(did, result);
   return result;

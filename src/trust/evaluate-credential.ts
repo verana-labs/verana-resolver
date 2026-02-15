@@ -11,6 +11,9 @@ import type {
   EvaluationContext,
   FailedCredential,
 } from './types.js';
+import pino from 'pino';
+
+const logger = pino({ name: 'evaluate-credential' });
 
 const ECS_TYPE_PATTERNS: Array<{ pattern: RegExp; ecsType: EcsType }> = [
   { pattern: /ecs-service/i, ecsType: 'ECS-SERVICE' },
@@ -27,41 +30,54 @@ export async function evaluateCredential(
 ): Promise<{ credential?: CredentialEvaluation; failed?: FailedCredential }> {
   try {
     // 1. Verify signature
+    logger.debug({ vcId: vc.vcId, format: vc.format, issuer: vc.issuerDid }, 'Evaluating credential');
     const verifyResult = vc.format === 'anoncreds'
       ? await verifyAnonCredsCredential(vc.vc)
       : await verifyW3cCredential(vc.vc);
 
     if (!verifyResult.verified) {
+      const error = verifyResult.error ?? 'Signature verification failed';
+      logger.debug({ vcId: vc.vcId, error }, 'Credential signature verification FAILED');
       return {
         failed: {
           id: vc.vcId,
           format: formatToString(vc.format),
-          error: verifyResult.error ?? 'Signature verification failed',
+          error,
           errorCode: 'SIGNATURE_INVALID',
         },
       };
     }
+    logger.debug({ vcId: vc.vcId }, 'Credential signature verification OK');
 
-    // 2. Resolve VTJSC → CredentialSchema
+    // 2. Resolve VTJSC \u2192 CredentialSchema
     const vtjscId = vc.credentialSchemaId;
     let schema: CredentialSchema | undefined;
     let schemaInfo: CredentialSchemaInfo | undefined;
 
     if (vtjscId) {
+      logger.debug({ vcId: vc.vcId, vtjscId }, 'Resolving VTJSC to CredentialSchema');
       schema = await resolveVtjscToSchema(vtjscId, indexer, ctx.currentBlock);
       if (schema) {
+        const ecosystemDid = await resolveEcosystemDid(schema.tr_id, indexer, ctx.currentBlock);
+        const ecosystemAka = await resolveEcosystemAka(schema.tr_id, indexer, ctx.currentBlock);
         schemaInfo = {
           id: Number(schema.id),
           jsonSchema: schema.json_schema,
-          ecosystemDid: await resolveEcosystemDid(schema.tr_id, indexer, ctx.currentBlock),
-          ecosystemAka: await resolveEcosystemAka(schema.tr_id, indexer, ctx.currentBlock),
+          ecosystemDid,
+          ecosystemAka,
           issuerPermManagementMode: schema.issuer_perm_management_mode,
         };
+        logger.debug({ vcId: vc.vcId, schemaId: schema.id, ecosystemDid, ecosystemAka: ecosystemAka ?? 'none' }, 'CredentialSchema resolved');
+      } else {
+        logger.debug({ vcId: vc.vcId, vtjscId }, 'CredentialSchema not found for VTJSC');
       }
+    } else {
+      logger.debug({ vcId: vc.vcId }, 'No VTJSC/credentialSchemaId on credential');
     }
 
     // 3. Determine ECS type from VTJSC URI
     const ecsType = classifyEcsType(vtjscId);
+    logger.debug({ vcId: vc.vcId, ecsType: ecsType ?? 'none' }, 'ECS type classified');
 
     // 4. Determine effective issuance time
     let effectiveIssuanceTime: string | undefined;
@@ -70,22 +86,29 @@ export async function evaluateCredential(
     if (vc.format !== 'anoncreds' && vc.vc) {
       try {
         digestSri = await computeDigestSRI(vc.vc);
+        logger.debug({ vcId: vc.vcId, digestSri }, 'Computed digestSRI');
         const digestResp = await indexer.getDigest(digestSri, ctx.currentBlock);
         if (digestResp.digest) {
           effectiveIssuanceTime = digestResp.digest.created;
+          logger.debug({ vcId: vc.vcId, effectiveIssuanceTime }, 'Digest found on-chain');
+        } else {
+          logger.debug({ vcId: vc.vcId }, 'Digest response empty');
         }
       } catch {
-        // Digest not found on-chain — use issuedAt from VC if available
+        // Digest not found on-chain \u2014 use issuedAt from VC if available
         effectiveIssuanceTime = extractIssuedAt(vc.vc);
+        logger.debug({ vcId: vc.vcId, effectiveIssuanceTime: effectiveIssuanceTime ?? 'none' }, 'Digest not on-chain, using VC issuedAt');
       }
     } else {
       // AnonCreds: use current time
       effectiveIssuanceTime = new Date().toISOString();
+      logger.debug({ vcId: vc.vcId }, 'AnonCreds format \u2014 using current time as effective issuance');
     }
 
     // 5. Verify issuer has ISSUER permission at effective issuance time
     let issuerPermission: Permission | undefined;
     if (schema && vc.issuerDid) {
+      logger.debug({ vcId: vc.vcId, issuerDid: vc.issuerDid, schemaId: schema.id }, 'Looking up ISSUER permission');
       issuerPermission = await findIssuerPermission(
         vc.issuerDid,
         schema.id,
@@ -95,15 +118,18 @@ export async function evaluateCredential(
     }
 
     if (!issuerPermission) {
+      const error = `No active ISSUER permission found for issuer ${vc.issuerDid} on schema ${schema?.id ?? 'unknown'}`;
+      logger.debug({ vcId: vc.vcId, issuerDid: vc.issuerDid, schemaId: schema?.id }, 'ISSUER permission NOT found \u2014 credential FAILED');
       return {
         failed: {
           id: vc.vcId,
           format: formatToString(vc.format),
-          error: `No active ISSUER permission found for issuer ${vc.issuerDid} on schema ${schema?.id ?? 'unknown'}`,
+          error,
           errorCode: 'ISSUER_NOT_AUTHORIZED',
         },
       };
     }
+    logger.debug({ vcId: vc.vcId, permissionId: issuerPermission.id, permState: issuerPermission.perm_state }, 'ISSUER permission found');
 
     // 6. Build permission chain
     let permissionChain = schemaInfo
@@ -136,6 +162,7 @@ export async function evaluateCredential(
 
     // 9. Determine result: VALID if ECS match + all checks pass, IGNORED if non-ECS
     const result = ecsType !== null ? 'VALID' as const : 'IGNORED' as const;
+    logger.debug({ vcId: vc.vcId, result, ecsType: ecsType ?? 'none', chainLength: permissionChain.length }, 'Credential evaluation complete');
 
     return {
       credential: {
@@ -157,11 +184,13 @@ export async function evaluateCredential(
       },
     };
   } catch (err) {
+    const errorMsg = err instanceof Error ? err.message : String(err);
+    logger.debug({ vcId: vc.vcId, error: errorMsg }, 'Credential evaluation threw an exception');
     return {
       failed: {
         id: vc.vcId,
         format: formatToString(vc.format),
-        error: err instanceof Error ? err.message : String(err),
+        error: errorMsg,
         errorCode: 'EVALUATION_ERROR',
       },
     };

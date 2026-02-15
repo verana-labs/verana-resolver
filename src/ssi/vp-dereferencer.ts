@@ -1,7 +1,9 @@
 import { getCachedFile, setCachedFile } from '../cache/file-cache.js';
 import type { LinkedVPEndpoint, DereferencedVP, DereferenceError } from './types.js';
 import { extractCredentialsFromVP } from './vc-verifier.js';
+import pino from 'pino';
 
+const logger = pino({ name: 'vp-dereferencer' });
 const LINKED_VP_TYPE = 'LinkedVerifiablePresentation';
 const FETCH_TIMEOUT_MS = 10_000;
 
@@ -34,13 +36,18 @@ export async function dereferenceVP(vpUrl: string): Promise<{
   if (cached !== null) {
     try {
       const parsed = JSON.parse(cached) as DereferencedVP;
+      logger.debug({ vpUrl, credentials: parsed.credentials.length }, 'VP cache hit');
       return { result: parsed };
     } catch {
-      // Invalid cache — re-fetch
+      logger.debug({ vpUrl }, 'VP cache entry invalid \u2014 re-fetching');
+      // Invalid cache \u2014 re-fetch
     }
+  } else {
+    logger.debug({ vpUrl }, 'VP cache miss');
   }
 
   // Fetch VP from endpoint
+  logger.debug({ vpUrl }, 'Fetching VP from endpoint');
   try {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
@@ -53,11 +60,13 @@ export async function dereferenceVP(vpUrl: string): Promise<{
     clearTimeout(timeout);
 
     if (!response.ok) {
+      const error = `HTTP ${response.status}: ${response.statusText}`;
+      logger.debug({ vpUrl, status: response.status, error }, 'VP fetch failed');
       return {
         error: {
           resource: vpUrl,
           resourceType: 'vp',
-          error: `HTTP ${response.status}: ${response.statusText}`,
+          error,
           timestamp: Date.now(),
         },
       };
@@ -65,6 +74,8 @@ export async function dereferenceVP(vpUrl: string): Promise<{
 
     const vpJson = (await response.json()) as Record<string, unknown>;
     const credentials = extractCredentialsFromVP(vpJson);
+
+    logger.debug({ vpUrl, credentials: credentials.length }, 'VP fetched successfully');
 
     const dereferenced: DereferencedVP = {
       vpUrl,
@@ -78,11 +89,13 @@ export async function dereferenceVP(vpUrl: string): Promise<{
 
     return { result: dereferenced };
   } catch (err) {
+    const errorMsg = err instanceof Error ? err.message : String(err);
+    logger.debug({ vpUrl, error: errorMsg }, 'VP fetch threw an exception');
     return {
       error: {
         resource: vpUrl,
         resourceType: 'vp',
-        error: err instanceof Error ? err.message : String(err),
+        error: errorMsg,
         timestamp: Date.now(),
       },
     };
@@ -96,6 +109,8 @@ export async function dereferenceAllVPs(
   errors: DereferenceError[];
 }> {
   const endpoints = extractLinkedVPEndpoints(didDocument);
+  logger.debug({ endpointCount: endpoints.length, endpoints: endpoints.map((e) => e.serviceEndpoint) }, 'Extracted LinkedVP endpoints from DID document');
+
   const vps: DereferencedVP[] = [];
   const errors: DereferenceError[] = [];
 
@@ -106,6 +121,9 @@ export async function dereferenceAllVPs(
     if (res.result) vps.push(res.result);
     if (res.error) errors.push(res.error);
   }
+
+  const totalCreds = vps.reduce((sum, vp) => sum + vp.credentials.length, 0);
+  logger.debug({ vpsOk: vps.length, vpsFailed: errors.length, totalCredentials: totalCreds }, 'VP dereference complete');
 
   return { vps, errors };
 }

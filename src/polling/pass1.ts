@@ -62,12 +62,16 @@ export async function runPass1(
   const succeeded: string[] = [];
   const failed: string[] = [];
 
+  logger.info({ didCount: affectedDids.size, block: currentBlock }, 'Pass1 started \u2014 DID resolution + VP dereferencing');
+
   for (const did of affectedDids) {
     try {
       // 1. Invalidate cached DID Document
+      logger.debug({ did }, 'Pass1: invalidating cached DID document');
       await deleteCachedFile(did);
 
       // 2. Re-resolve DID Document (will re-cache)
+      logger.debug({ did }, 'Pass1: resolving DID document');
       const didResult = await resolveDID(did);
       if (didResult.error || !didResult.result) {
         const errorMsg = didResult.error?.error;
@@ -76,23 +80,31 @@ export async function runPass1(
           await markUntrusted(did, currentBlock, trustTtlSeconds);
           await addReattemptable(did, 'DID_DOC', 'PERMANENT');
         } else {
-          logger.warn({ did, error: errorMsg }, 'Pass1: DID resolution failed');
+          logger.warn({ did, error: errorMsg }, 'Pass1: DID resolution failed (transient)');
           await addReattemptable(did, 'DID_DOC', 'TRANSIENT');
         }
         failed.push(did);
         continue;
       }
 
+      logger.debug({ did }, 'Pass1: DID resolved OK \u2014 dereferencing VPs');
+
       // 3. Dereference VPs and cache VCs
-      const { errors: vpErrors } = await dereferenceAllVPs(didResult.result.didDocument);
+      const { vps, errors: vpErrors } = await dereferenceAllVPs(didResult.result.didDocument);
 
       if (vpErrors.length > 0) {
-        logger.warn({ did, vpErrors: vpErrors.length }, 'Pass1: some VPs failed to dereference');
+        logger.warn(
+          { did, vpErrors: vpErrors.length, failedUrls: vpErrors.map((e) => e.resource) },
+          'Pass1: some VPs failed to dereference',
+        );
         for (const vpErr of vpErrors) {
+          logger.debug({ did, vpUrl: vpErr.resource, error: vpErr.error }, 'Pass1: VP dereference error detail');
           await addReattemptable(vpErr.resource, 'VP', 'TRANSIENT');
         }
       }
 
+      const totalCreds = vps.reduce((sum, vp) => sum + vp.credentials.length, 0);
+      logger.info({ did, vpsOk: vps.length, vpsFailed: vpErrors.length, credentials: totalCreds }, 'Pass1: DID processed OK');
       succeeded.push(did);
     } catch (err) {
       logger.error({ did, err }, 'Pass1: unexpected error');
@@ -101,5 +113,6 @@ export async function runPass1(
     }
   }
 
+  logger.info({ succeeded: succeeded.length, failed: failed.length, block: currentBlock }, 'Pass1 complete');
   return { succeeded, failed };
 }
