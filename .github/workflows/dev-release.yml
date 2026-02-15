@@ -24,11 +24,7 @@ jobs:
           node-version: 22
 
       - name: Install dependencies
-<<<<<<< HEAD
         run: npm install
-=======
-        run: npm ci
->>>>>>> 9d5803a (ops: add GitHub Actions workflows (lint-pr, dev-release, stable-release))
 
       - name: Run tests
         run: npm test
@@ -100,7 +96,6 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-<<<<<<< HEAD
       - name: Set up Helm
         if: steps.semantic.outputs.new-release-published == 'true'
         uses: azure/setup-helm@v3
@@ -124,8 +119,6 @@ jobs:
             helm push ./charts/$CHART_NAME-$tag.tgz oci://docker.io/"${{ secrets.DOCKER_HUB_LOGIN }}"
           done
 
-=======
->>>>>>> 9d5803a (ops: add GitHub Actions workflows (lint-pr, dev-release, stable-release))
       - name: Publish Summary
         if: steps.semantic.outputs.new-release-published == 'true'
         run: |
@@ -135,11 +128,8 @@ jobs:
           echo "- verana-resolver:v${{ steps.semantic.outputs.release-major }}-dev" >> $GITHUB_STEP_SUMMARY
           echo "- verana-resolver:v${{ steps.semantic.outputs.release-major }}.${{ steps.semantic.outputs.release-minor }}-dev" >> $GITHUB_STEP_SUMMARY
           echo "- verana-resolver:v${{ steps.semantic.outputs.release-version }}" >> $GITHUB_STEP_SUMMARY
-<<<<<<< HEAD
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "Helm Charts" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "- verana-resolver-chart:v${{ steps.semantic.outputs.release-major }}.${{ steps.semantic.outputs.release-minor }}-dev" >> $GITHUB_STEP_SUMMARY
           echo "- verana-resolver-chart:v${{ steps.semantic.outputs.release-version }}" >> $GITHUB_STEP_SUMMARY
-=======
->>>>>>> 9d5803a (ops: add GitHub Actions workflows (lint-pr, dev-release, stable-release))
