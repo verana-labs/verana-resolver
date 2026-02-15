@@ -49,14 +49,30 @@ export async function evaluateCredential(
     }
     logger.debug({ vcId: vc.vcId }, 'Credential signature verification OK');
 
-    // 2. Resolve VTJSC \u2192 CredentialSchema
-    const vtjscId = vc.credentialSchemaId;
+    // 2. Determine the effective schema reference for on-chain lookup.
+    //    - VTJSCs (JsonSchemaCredential): the VPR URI is in credentialSubject.id
+    //    - Regular VCs: credentialSchema.id points to the VTJSC URL
+    const vcTypes = Array.isArray(vc.vc.type) ? vc.vc.type as string[] : [];
+    const isVtjsc = vcTypes.includes('JsonSchemaCredential');
+    let schemaRef: string | undefined;
+
+    if (isVtjsc) {
+      // VTJSC: extract VPR URI from credentialSubject.id
+      const subject = vc.vc.credentialSubject as Record<string, unknown> | undefined;
+      schemaRef = typeof subject?.id === 'string' ? subject.id as string : undefined;
+      logger.debug({ vcId: vc.vcId, isVtjsc: true, schemaRef: schemaRef ?? 'none', credentialSchemaId: vc.credentialSchemaId ?? 'none' }, 'VTJSC detected \u2014 using credentialSubject.id as schema reference');
+    } else {
+      // Regular VC: credentialSchema.id is the VTJSC URL
+      schemaRef = vc.credentialSchemaId;
+      logger.debug({ vcId: vc.vcId, isVtjsc: false, schemaRef: schemaRef ?? 'none' }, 'Regular VC \u2014 using credentialSchema.id as schema reference');
+    }
+
     let schema: CredentialSchema | undefined;
     let schemaInfo: CredentialSchemaInfo | undefined;
 
-    if (vtjscId) {
-      logger.info({ vcId: vc.vcId, vtjscId }, 'Resolving schema reference to on-chain CredentialSchema');
-      schema = await resolveVtjscToSchema(vtjscId, indexer, ctx.currentBlock);
+    if (schemaRef) {
+      logger.info({ vcId: vc.vcId, schemaRef, isVtjsc }, 'Resolving schema reference to on-chain CredentialSchema');
+      schema = await resolveVtjscToSchema(schemaRef, indexer, ctx.currentBlock);
       if (schema) {
         const ecosystemDid = await resolveEcosystemDid(schema.tr_id, indexer, ctx.currentBlock);
         const ecosystemAka = await resolveEcosystemAka(schema.tr_id, indexer, ctx.currentBlock);
@@ -69,42 +85,44 @@ export async function evaluateCredential(
         };
         logger.info({ vcId: vc.vcId, onChainSchemaId: schema.id, trId: schema.tr_id, ecosystemDid, ecosystemAka: ecosystemAka ?? 'none', jsonSchema: schema.json_schema }, 'CredentialSchema resolved OK');
       } else {
-        logger.warn({ vcId: vc.vcId, vtjscId }, 'CredentialSchema NOT found on-chain for schema reference');
+        logger.warn({ vcId: vc.vcId, schemaRef, isVtjsc }, 'CredentialSchema NOT found on-chain for schema reference');
       }
     } else {
-      logger.warn({ vcId: vc.vcId, credentialSchemaId: (vc.vc.credentialSchema as Record<string, unknown>)?.id ?? 'none', credentialSubjectId: (vc.vc.credentialSubject as Record<string, unknown>)?.id ?? 'none' }, 'No VPR URI or credentialSchemaId found on credential');
+      logger.warn({ vcId: vc.vcId, credentialSchemaId: vc.credentialSchemaId ?? 'none', isVtjsc }, 'No schema reference found on credential');
     }
 
     // 2b. Verify digestSRI of the JSON schema content from the VPR
-    const subject = vc.vc.credentialSubject as Record<string, unknown> | undefined;
-    const expectedDigestSri = typeof subject?.digestSRI === 'string' ? subject.digestSRI as string : undefined;
-    if (expectedDigestSri && vtjscId && schema) {
-      const jsId = parseVprJsonSchemaId(vtjscId);
-      if (jsId) {
-        try {
-          const jsonSchemaContent = await indexer.fetchJsonSchemaContent(jsId, ctx.currentBlock);
-          const digestResult = await verifySriDigest(jsonSchemaContent, expectedDigestSri);
-          if (!digestResult.valid) {
-            const error = `JSON schema digestSRI mismatch: expected=${expectedDigestSri}, computed=${digestResult.computed ?? 'unknown'}`;
-            logger.warn({ vcId: vc.vcId, vtjscId, jsId, expected: expectedDigestSri, computed: digestResult.computed }, 'JSON schema digestSRI verification FAILED');
-            return {
-              failed: {
-                id: vc.vcId,
-                format: formatToString(vc.format),
-                error,
-                errorCode: 'DIGEST_SRI_MISMATCH',
-              },
-            };
+    if (isVtjsc && schema) {
+      const vtjscSubject = vc.vc.credentialSubject as Record<string, unknown> | undefined;
+      const expectedDigestSri = typeof vtjscSubject?.digestSRI === 'string' ? vtjscSubject.digestSRI as string : undefined;
+      if (expectedDigestSri && schemaRef) {
+        const jsId = parseVprJsonSchemaId(schemaRef);
+        if (jsId) {
+          try {
+            const jsonSchemaContent = await indexer.fetchJsonSchemaContent(jsId, ctx.currentBlock);
+            const digestResult = await verifySriDigest(jsonSchemaContent, expectedDigestSri);
+            if (!digestResult.valid) {
+              const error = `JSON schema digestSRI mismatch: expected=${expectedDigestSri}, computed=${digestResult.computed ?? 'unknown'}`;
+              logger.warn({ vcId: vc.vcId, schemaRef, jsId, expected: expectedDigestSri, computed: digestResult.computed }, 'JSON schema digestSRI verification FAILED');
+              return {
+                failed: {
+                  id: vc.vcId,
+                  format: formatToString(vc.format),
+                  error,
+                  errorCode: 'DIGEST_SRI_MISMATCH',
+                },
+              };
+            }
+            logger.debug({ vcId: vc.vcId, digestSri: expectedDigestSri }, 'JSON schema digestSRI verified OK');
+          } catch (err) {
+            logger.warn({ vcId: vc.vcId, jsId, error: err instanceof Error ? err.message : String(err) }, 'Failed to fetch JSON schema content for digestSRI verification');
           }
-          logger.debug({ vcId: vc.vcId, digestSri: expectedDigestSri }, 'JSON schema digestSRI verified OK');
-        } catch (err) {
-          logger.warn({ vcId: vc.vcId, jsId, error: err instanceof Error ? err.message : String(err) }, 'Failed to fetch JSON schema content for digestSRI verification');
         }
       }
     }
 
-    // 3. Determine ECS type from VTJSC URI
-    const ecsType = classifyEcsType(vtjscId);
+    // 3. Determine ECS type from schema reference
+    const ecsType = classifyEcsType(schemaRef);
     logger.debug({ vcId: vc.vcId, ecsType: ecsType ?? 'none' }, 'ECS type classified');
 
     // 4. Determine effective issuance time
@@ -147,15 +165,16 @@ export async function evaluateCredential(
 
     if (!issuerPermission) {
       const reason = !schema
-        ? `schema not found on-chain (vtjscId=${vtjscId ?? 'none'})`
+        ? `schema not found on-chain (schemaRef=${schemaRef ?? 'none'})`
         : `no active ISSUER permission for did=${vc.issuerDid} on schema_id=${schema.id}`;
       const error = `ISSUER_NOT_AUTHORIZED: ${reason}`;
       logger.warn({
         vcId: vc.vcId,
         issuerDid: vc.issuerDid,
-        vtjscId: vtjscId ?? 'none',
+        schemaRef: schemaRef ?? 'none',
         onChainSchemaId: schema?.id ?? 'none',
         schemaFound: !!schema,
+        isVtjsc,
         reason,
       }, 'ISSUER permission NOT found \u2014 credential FAILED');
       return {
@@ -215,7 +234,7 @@ export async function evaluateCredential(
         validUntil: extractValidUntil(vc.vc),
         digestSri,
         effectiveIssuanceTime,
-        vtjscId,
+        vtjscId: schemaRef,
         claims,
         schema: schemaInfo,
         permissionChain,
