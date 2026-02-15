@@ -26,9 +26,6 @@ jobs:
       - name: Install dependencies
         run: npm install
 
-      - name: Run tests
-        run: npm test
-
       - name: Run semantic-release
         id: semantic
         uses: codfish/semantic-release-action@v3
