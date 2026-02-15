@@ -216,6 +216,7 @@ describe('pollOnce', () => {
       currentBlock: 100,
       cacheTtlSeconds: 3600,
       trustMemo: new Map(),
+      allowedEcosystemDids: new Set(),
     }),
   }));
 
@@ -270,6 +271,7 @@ describe('pollOnce', () => {
       POLL_INTERVAL: 5,
       TRUST_TTL: 3600,
       POLL_OBJECT_CACHING_RETRY_DAYS: 7,
+      ECS_ECOSYSTEM_DIDS: 'did:web:ecosystem.example.com',
     } as any;
 
     const result = await pollOnce(mockIndexer, config);
@@ -297,6 +299,7 @@ describe('pollOnce', () => {
       POLL_INTERVAL: 5,
       TRUST_TTL: 3600,
       POLL_OBJECT_CACHING_RETRY_DAYS: 7,
+      ECS_ECOSYSTEM_DIDS: 'did:web:ecosystem.example.com',
     } as any;
 
     const result = await pollOnce(mockIndexer, config);

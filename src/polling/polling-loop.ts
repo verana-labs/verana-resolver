@@ -53,6 +53,11 @@ export async function pollOnce(
   let blocksProcessed = 0;
   let didsAffected = 0;
 
+  // Parse allowed ecosystem DIDs from config
+  const allowedEcosystemDids = new Set(
+    config.ECS_ECOSYSTEM_DIDS.split(',').map((d) => d.trim()).filter(Boolean),
+  );
+
   // Clear Indexer memo per cycle
   indexer.clearMemo();
 
@@ -80,10 +85,10 @@ export async function pollOnce(
       await retryEligiblePass1(indexer, target, config);
 
       // Pass2: re-evaluate trust
-      await runPass2(affectedDids, indexer, target, config.TRUST_TTL);
+      await runPass2(affectedDids, indexer, target, config.TRUST_TTL, allowedEcosystemDids);
 
       // Retry eligible Pass2 failures
-      await retryEligiblePass2(indexer, target, config);
+      await retryEligiblePass2(indexer, target, config, allowedEcosystemDids);
 
       didsAffected += affectedDids.size;
     }
@@ -95,7 +100,7 @@ export async function pollOnce(
   }
 
   // 3. TTL-driven refresh (does NOT advance lastProcessedBlock)
-  await refreshExpiredEvaluations(indexer, lastBlock, config);
+  await refreshExpiredEvaluations(indexer, lastBlock, config, allowedEcosystemDids);
 
   // 4. Cleanup permanently failed retries \u2192 mark UNTRUSTED
   const expired = await cleanupExpiredRetries(config.POLL_OBJECT_CACHING_RETRY_DAYS);
@@ -136,6 +141,7 @@ async function retryEligiblePass2(
   indexer: IndexerClient,
   currentBlock: number,
   config: EnvConfig,
+  allowedEcosystemDids: Set<string>,
 ): Promise<void> {
   const eligible = await getRetryEligible(config.POLL_OBJECT_CACHING_RETRY_DAYS);
   const pass2Eligible = eligible.filter((r) => r.resourceType === 'TRUST_EVAL');
@@ -143,7 +149,7 @@ async function retryEligiblePass2(
   if (pass2Eligible.length === 0) return;
 
   const dids = new Set(pass2Eligible.map((r) => r.resourceId));
-  const result = await runPass2(dids, indexer, currentBlock, config.TRUST_TTL);
+  const result = await runPass2(dids, indexer, currentBlock, config.TRUST_TTL, allowedEcosystemDids);
 
   for (const did of result.succeeded) {
     await removeReattemptable(did);
@@ -154,6 +160,7 @@ async function refreshExpiredEvaluations(
   indexer: IndexerClient,
   currentBlock: number,
   config: EnvConfig,
+  allowedEcosystemDids: Set<string>,
 ): Promise<void> {
   const pool = getPool();
   const result = await pool.query<{ did: string }>(
@@ -166,7 +173,7 @@ async function refreshExpiredEvaluations(
   logger.info({ count: expiredDids.size }, 'Refreshing expired trust evaluations');
 
   await runPass1(expiredDids, indexer);
-  await runPass2(expiredDids, indexer, currentBlock, config.TRUST_TTL);
+  await runPass2(expiredDids, indexer, currentBlock, config.TRUST_TTL, allowedEcosystemDids);
 }
 
 function sleep(ms: number, signal?: AbortSignal): Promise<void> {

@@ -11,11 +11,12 @@ export async function runPass2(
   indexer: IndexerClient,
   currentBlock: number,
   cacheTtlSeconds: number,
+  allowedEcosystemDids: Set<string>,
 ): Promise<{ succeeded: string[]; failed: string[] }> {
   const succeeded: string[] = [];
   const failed: string[] = [];
 
-  const ctx = createEvaluationContext(currentBlock, cacheTtlSeconds);
+  const ctx = createEvaluationContext(currentBlock, cacheTtlSeconds, allowedEcosystemDids);
 
   for (const did of affectedDids) {
     try {
