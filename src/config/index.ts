@@ -25,6 +25,9 @@ const envSchema = z.object({
   INDEXER_API: z.string().url(),
   ECS_ECOSYSTEM_DIDS: z.string().min(1),
 
+  // Polling
+  ENABLE_POLLING: z.coerce.boolean().default(true),
+
   // Server
   PORT: z.coerce.number().int().positive().default(3000),
   LOG_LEVEL: LogLevel.default('info'),
