@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import Fastify from 'fastify';
 import { loadConfig } from './config/index.js';
 import { registerQ1Route } from './routes/q1-resolve.js';
