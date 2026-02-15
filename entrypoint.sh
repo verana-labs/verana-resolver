@@ -9,6 +9,7 @@ POSTGRES_PASSWORD
 POSTGRES_DB
 REDIS_URL
 INDEXER_API
+ECS_ECOSYSTEM_DIDS
 "
 
 echo "Validating environment variables..."

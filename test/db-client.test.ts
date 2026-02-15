@@ -10,6 +10,7 @@ describe('db client configuration', () => {
       POSTGRES_DB: 'verana_resolver_test',
       REDIS_URL: 'redis://localhost:6379',
       INDEXER_API: 'http://localhost:1317',
+      ECS_ECOSYSTEM_DIDS: 'did:web:ecosystem.example.com',
     });
   });
 
@@ -22,6 +23,7 @@ describe('db client configuration', () => {
       POSTGRES_DB: 'verana_resolver_test',
       REDIS_URL: 'redis://localhost:6379',
       INDEXER_API: 'http://localhost:1317',
+      ECS_ECOSYSTEM_DIDS: 'did:web:ecosystem.example.com',
     });
     expect(config.POSTGRES_HOST).toBe('localhost');
     expect(config.POSTGRES_PORT).toBe(5432);
@@ -36,6 +38,7 @@ describe('db client configuration', () => {
         POSTGRES_DB: 'verana_resolver_test',
         REDIS_URL: 'redis://localhost:6379',
         INDEXER_API: 'http://localhost:1317',
+        ECS_ECOSYSTEM_DIDS: 'did:web:ecosystem.example.com',
       }),
     ).toThrow('Invalid configuration');
   });
