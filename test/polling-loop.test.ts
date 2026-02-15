@@ -169,6 +169,14 @@ describe('extractAffectedDids', () => {
 
 describe('pollOnce', () => {
   // Mock all dependencies
+  vi.mock('../src/polling/indexer-ws.js', () => ({
+    IndexerWebSocket: vi.fn().mockImplementation(() => ({
+      waitForBlock: vi.fn().mockResolvedValue(false),
+      onBlock: vi.fn().mockReturnValue(() => {}),
+      close: vi.fn(),
+    })),
+  }));
+
   vi.mock('../src/polling/leader.js', () => ({
     tryAcquireLeaderLock: vi.fn().mockResolvedValue(true),
     releaseLeaderLock: vi.fn().mockResolvedValue(undefined),
