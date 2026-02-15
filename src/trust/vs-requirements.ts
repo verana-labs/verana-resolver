@@ -15,12 +15,14 @@ export async function evaluateVSRequirements(
   indexer: IndexerClient,
   ctx: EvaluationContext,
   resolveTrustFn: (did: string, indexer: IndexerClient, ctx: EvaluationContext) => Promise<TrustResult>,
+  allowedEcosystemDids: Set<string>,
 ): Promise<TrustStatus> {
-  // Group valid credentials by ecosystem
+  // Group valid credentials by ecosystem, filtering out ecosystems not in the allowlist
   const byEcosystem = new Map<string, CredentialEvaluation[]>();
   for (const cred of validCredentials) {
     const ecosystemDid = cred.schema?.ecosystemDid;
     if (!ecosystemDid) continue;
+    if (!allowedEcosystemDids.has(ecosystemDid)) continue;
 
     const existing = byEcosystem.get(ecosystemDid) ?? [];
     existing.push(cred);

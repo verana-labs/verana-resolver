@@ -105,6 +105,7 @@ export async function resolveTrust(
     indexer,
     ctx,
     resolveTrust,
+    ctx.allowedEcosystemDids,
   );
 
   // 8. Derive production flag
@@ -129,12 +130,14 @@ export async function resolveTrust(
 export function createEvaluationContext(
   currentBlock: number,
   cacheTtlSeconds: number,
+  allowedEcosystemDids: Set<string>,
 ): EvaluationContext {
   return {
     visitedDids: new Set<string>(),
     currentBlock,
     cacheTtlSeconds,
     trustMemo: new Map<string, TrustResult>(),
+    allowedEcosystemDids,
   };
 }
 

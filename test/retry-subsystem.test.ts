@@ -62,6 +62,7 @@ vi.mock('../src/trust/resolve-trust.js', () => ({
     currentBlock: 100,
     cacheTtlSeconds: 3600,
     trustMemo: new Map(),
+    allowedEcosystemDids: new Set(),
   }),
 }));
 
@@ -199,6 +200,7 @@ describe('Pass2 \u2014 error handling', () => {
       {} as any,
       500,
       3600,
+      new Set(),
     );
 
     expect(result.failed).toContain('did:web:evalfail.example.com');

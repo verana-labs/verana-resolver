@@ -70,4 +70,5 @@ export interface EvaluationContext {
   currentBlock: number;
   cacheTtlSeconds: number;
   trustMemo: Map<string, TrustResult>;
+  allowedEcosystemDids: Set<string>;
 }
