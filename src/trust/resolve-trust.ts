@@ -120,6 +120,26 @@ export async function resolveTrust(
   const ignoredCredentials = credentials.filter((c) => c.result === 'IGNORED');
   logger.debug({ did, valid: validCredentials.length, ignored: ignoredCredentials.length, failed: failedCredentials.length }, 'Step 3/5: Credential evaluation summary');
 
+  // Detailed per-credential debug summary
+  for (const c of validCredentials) {
+    logger.debug(
+      { did, vcId: c.id, result: 'VALID', ecsType: c.ecsType, issuer: c.issuedBy, type: c.type, vtjscId: c.vtjscId ?? 'none', chainLength: c.permissionChain?.length ?? 0 },
+      'Credential result: VALID',
+    );
+  }
+  for (const c of ignoredCredentials) {
+    logger.debug(
+      { did, vcId: c.id, result: 'IGNORED', issuer: c.issuedBy, type: c.type, vtjscId: c.vtjscId ?? 'none' },
+      'Credential result: IGNORED (no ECS type match)',
+    );
+  }
+  for (const f of failedCredentials) {
+    logger.debug(
+      { did, vcId: f.id, result: 'FAILED', errorCode: f.errorCode, error: f.error, format: f.format },
+      'Credential result: FAILED',
+    );
+  }
+
   // 7. Evaluate VS-REQ-2/3/4
   logger.debug({ did }, 'Step 4/5: Evaluating VS requirements');
   const trustStatus = await evaluateVSRequirements(
@@ -147,9 +167,15 @@ export async function resolveTrust(
   };
 
   logger.info(
-    { did, trustStatus, production, validCredentials: validCredentials.length, failedCredentials: failedCredentials.length, block: ctx.currentBlock },
+    { did, trustStatus, production, validCredentials: validCredentials.length, ignoredCredentials: ignoredCredentials.length, failedCredentials: failedCredentials.length, block: ctx.currentBlock },
     'Step 5/5: Trust evaluation complete',
   );
+  if (trustStatus === 'UNTRUSTED') {
+    logger.debug(
+      { did, failedCredentials: failedCredentials.map((f) => ({ id: f.id, errorCode: f.errorCode, error: f.error })) },
+      'Trust evaluation UNTRUSTED \u2014 failure details',
+    );
+  }
 
   ctx.trustMemo.set(did, result);
   return result;

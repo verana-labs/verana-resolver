@@ -25,10 +25,20 @@ export async function runPass2(
       logger.debug({ did }, 'Pass2: evaluating trust');
       const result = await resolveTrust(did, indexer, ctx);
       await upsertTrustResult(result);
+      const validCount = result.credentials.filter((c) => c.result === 'VALID').length;
+      const ignoredCount = result.credentials.filter((c) => c.result === 'IGNORED').length;
       logger.info(
-        { did, trustStatus: result.trustStatus, production: result.production, validCredentials: result.credentials.filter((c) => c.result === 'VALID').length, failedCredentials: result.failedCredentials.length },
+        { did, trustStatus: result.trustStatus, production: result.production, validCredentials: validCount, ignoredCredentials: ignoredCount, failedCredentials: result.failedCredentials.length },
         'Pass2: DID trust evaluated and stored',
       );
+      if (result.trustStatus === 'UNTRUSTED' && result.failedCredentials.length > 0) {
+        for (const f of result.failedCredentials) {
+          logger.debug(
+            { did, vcId: f.id, errorCode: f.errorCode, error: f.error, format: f.format },
+            'Pass2: credential failure detail',
+          );
+        }
+      }
       succeeded.push(did);
     } catch (err) {
       logger.error({ did, err }, 'Pass2: trust evaluation failed');
