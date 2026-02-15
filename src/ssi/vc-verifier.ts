@@ -155,11 +155,13 @@ async function verifyJsonLdCredential(
     jsonld.canonize(proofOptions, {
       algorithm: 'URDNA2015',
       format: 'application/n-quads',
+      safe: false,
       documentLoader,
     }),
     jsonld.canonize(document, {
       algorithm: 'URDNA2015',
       format: 'application/n-quads',
+      safe: false,
       documentLoader,
     }),
   ]);

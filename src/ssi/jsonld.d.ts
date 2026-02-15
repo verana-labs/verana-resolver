@@ -2,6 +2,7 @@ declare module '@digitalcredentials/jsonld' {
   interface CanonizeOptions {
     algorithm?: string;
     format?: string;
+    safe?: boolean;
     documentLoader?: (url: string) => Promise<{
       contextUrl: string | null;
       documentUrl: string;
