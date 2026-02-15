@@ -14,7 +14,6 @@ image:
 
 # Service configuration
 service:
-  type: ClusterIP
   port: 3000
   targetPort: 3000
 
@@ -22,15 +21,41 @@ service:
 nodeSelector:
   kubernetes.io/hostname: cluster-utc-node-07efe5
 
-# Environment variables consumed by the application
+# Database configuration
+database:
+  enabled: true
+  host: localhost
+  port: "5432"
+  user: verana
+  password: verana
+  db: verana_resolver
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  storage:
+    size: 10Gi
+    storageClassName: csi-cinder-classic
+
+# Redis configuration
+redis:
+  enabled: true
+  host: localhost
+  resources:
+    requests:
+      cpu: 25m
+      memory: 64Mi
+    limits:
+      cpu: 100m
+      memory: 128Mi
+
+# Application environment variables (non-infrastructure)
 env:
-  POSTGRES_HOST: "localhost"
-  POSTGRES_PORT: "5432"
-  POSTGRES_USER: "verana"
-  POSTGRES_PASSWORD: "verana"
-  POSTGRES_DB: "verana_resolver"
-  REDIS_URL: "redis://localhost:6379"
   INDEXER_API: "http://localhost:1317"
+  ECS_ECOSYSTEM_DIDS: ""
   PORT: "3000"
   LOG_LEVEL: "info"
   INSTANCE_ROLE: "leader"
@@ -38,9 +63,8 @@ env:
   CACHE_TTL: "86400"
   TRUST_TTL: "3600"
   POLL_OBJECT_CACHING_RETRY_DAYS: "7"
-  ECS_ECOSYSTEM_DIDS: ""
 
-# Additional env variables if needed (list of {name, value})
+# Extra environment variables (list of {name, value})
 extraEnv: []
 
 # Resource requests/limits for the resolver container
@@ -52,9 +76,8 @@ resources:
     memory: "1Gi"
     cpu: "500m"
 
-# Optional ingress configuration
+# Ingress configuration
 ingress:
-  enabled: true
   host: "{{ .Values.host }}.{{ .Values.global.domain }}"
   tlsSecret: public.{{ .Values.host }}.{{ .Values.global.domain }}-cert
   public:
