@@ -48,7 +48,7 @@ vi.mock('../src/config/index.js', () => ({
     CACHE_TTL: 86400,
     TRUST_TTL: 3600,
     POLL_OBJECT_CACHING_RETRY_DAYS: 7,
-    ECS_ECOSYSTEM_DIDS: '',
+    ECS_ECOSYSTEM_DIDS: 'did:web:ecosystem.example.com',
   }),
   getConfig: vi.fn().mockReturnValue({
     POSTGRES_HOST: 'localhost',
@@ -65,7 +65,7 @@ vi.mock('../src/config/index.js', () => ({
     CACHE_TTL: 86400,
     TRUST_TTL: 3600,
     POLL_OBJECT_CACHING_RETRY_DAYS: 7,
-    ECS_ECOSYSTEM_DIDS: '',
+    ECS_ECOSYSTEM_DIDS: 'did:web:ecosystem.example.com',
   }),
 }));
 

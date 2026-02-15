@@ -10,6 +10,7 @@ describe('loadConfig', () => {
       POSTGRES_DB: 'verana_resolver',
       REDIS_URL: 'redis://localhost:6379',
       INDEXER_API: 'http://localhost:1317',
+      ECS_ECOSYSTEM_DIDS: 'did:web:ecosystem.example.com',
     });
     expect(config.POSTGRES_PORT).toBe(5432);
     expect(config.POLL_INTERVAL).toBe(5);
@@ -19,7 +20,7 @@ describe('loadConfig', () => {
     expect(config.INSTANCE_ROLE).toBe('leader');
     expect(config.PORT).toBe(3000);
     expect(config.LOG_LEVEL).toBe('info');
-    expect(config.ECS_ECOSYSTEM_DIDS).toBe('');
+    expect(config.ECS_ECOSYSTEM_DIDS).toBe('did:web:ecosystem.example.com');
   });
 
   it('overrides defaults with provided values', () => {
@@ -58,6 +59,7 @@ describe('loadConfig', () => {
         POSTGRES_DB: 'verana_resolver',
         REDIS_URL: 'redis://localhost:6379',
         INDEXER_API: 'http://localhost:1317',
+        ECS_ECOSYSTEM_DIDS: 'did:web:ecosystem.example.com',
       }),
     ).toThrow('Invalid configuration');
   });
@@ -70,6 +72,7 @@ describe('loadConfig', () => {
         POSTGRES_PASSWORD: 'verana',
         POSTGRES_DB: 'verana_resolver',
         INDEXER_API: 'http://localhost:1317',
+        ECS_ECOSYSTEM_DIDS: 'did:web:ecosystem.example.com',
       }),
     ).toThrow('Invalid configuration');
   });
@@ -82,6 +85,20 @@ describe('loadConfig', () => {
         POSTGRES_PASSWORD: 'verana',
         POSTGRES_DB: 'verana_resolver',
         REDIS_URL: 'redis://localhost:6379',
+        ECS_ECOSYSTEM_DIDS: 'did:web:ecosystem.example.com',
+      }),
+    ).toThrow('Invalid configuration');
+  });
+
+  it('throws on missing required ECS_ECOSYSTEM_DIDS', () => {
+    expect(() =>
+      loadConfig({
+        POSTGRES_HOST: 'localhost',
+        POSTGRES_USER: 'verana',
+        POSTGRES_PASSWORD: 'verana',
+        POSTGRES_DB: 'verana_resolver',
+        REDIS_URL: 'redis://localhost:6379',
+        INDEXER_API: 'http://localhost:1317',
       }),
     ).toThrow('Invalid configuration');
   });
@@ -95,6 +112,7 @@ describe('loadConfig', () => {
         POSTGRES_DB: 'verana_resolver',
         REDIS_URL: 'redis://localhost:6379',
         INDEXER_API: 'http://localhost:1317',
+        ECS_ECOSYSTEM_DIDS: 'did:web:ecosystem.example.com',
         INSTANCE_ROLE: 'invalid',
       }),
     ).toThrow('Invalid configuration');

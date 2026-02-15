@@ -33,6 +33,7 @@ The **Verana Trust Resolver** is a core infrastructure component of the [Verana]
 | `POSTGRES_DB` | PostgreSQL database name |
 | `REDIS_URL` | Redis connection string (e.g. `redis://host:6379`) |
 | `INDEXER_API` | URL of the Verana Indexer API (e.g. `http://indexer:1317`) |
+| `ECS_ECOSYSTEM_DIDS` | Comma-separated list of allowed ECS ecosystem DIDs |
 
 ### Optional
 
@@ -46,7 +47,6 @@ The **Verana Trust Resolver** is a core infrastructure component of the [Verana]
 | `CACHE_TTL` | `86400` | Dereferenced object cache TTL in seconds (24h) |
 | `TRUST_TTL` | `3600` | Trust evaluation result TTL in seconds (1h) |
 | `POLL_OBJECT_CACHING_RETRY_DAYS` | `7` | Maximum retry window for failed dereferencing (days) |
-| `ECS_ECOSYSTEM_DIDS` | *(empty)* | Comma-separated list of allowed ECS ecosystem DIDs |
 
 ## Tech Stack
 

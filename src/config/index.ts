@@ -23,7 +23,7 @@ const envSchema = z.object({
 
   // Indexer
   INDEXER_API: z.string().url(),
-  ECS_ECOSYSTEM_DIDS: z.string().default(''),
+  ECS_ECOSYSTEM_DIDS: z.string().min(1),
 
   // Server
   PORT: z.coerce.number().int().positive().default(3000),
