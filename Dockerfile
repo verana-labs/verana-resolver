@@ -7,11 +7,11 @@ FROM node:22-alpine AS deps
 WORKDIR /app
 
 # Copy package files
-COPY package.json package-lock.json ./
+COPY package.json ./
 
 # Install all dependencies (including devDependencies for build)
 RUN --mount=type=cache,target=/root/.npm \
-    npm ci
+    npm install
 
 # ============================================
 # Stage 2: Build the application
@@ -42,9 +42,9 @@ RUN addgroup -S -g 1001 nodejs \
     && adduser -S -u 1001 -G nodejs resolver
 
 # Copy package files and install production-only dependencies
-COPY --from=builder /app/package.json /app/package-lock.json ./
+COPY --from=builder /app/package.json ./
 RUN --mount=type=cache,target=/root/.npm \
-    npm ci --omit=dev
+    npm install --omit=dev
 
 # Copy built application
 COPY --from=builder --chown=resolver:nodejs /app/dist ./dist
