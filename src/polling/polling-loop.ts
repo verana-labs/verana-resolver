@@ -8,9 +8,9 @@ import { getRetryEligible, removeReattemptable, cleanupExpiredRetries } from './
 import { markUntrusted } from '../trust/trust-store.js';
 import { getPool } from '../db/index.js';
 import { IndexerWebSocket } from './indexer-ws.js';
-import pino from 'pino';
+import { createLogger } from '../logger.js';
 
-const logger = pino({ name: 'polling-loop' });
+const logger = createLogger('polling-loop');
 
 export interface PollingLoopOptions {
   indexer: IndexerClient;

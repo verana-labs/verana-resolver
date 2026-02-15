@@ -9,9 +9,9 @@ import type {
   FailedCredential,
   EvaluationContext,
 } from './types.js';
-import pino from 'pino';
+import { createLogger } from '../logger.js';
 
-const logger = pino({ name: 'resolve-trust' });
+const logger = createLogger('resolve-trust');
 
 export async function resolveTrust(
   did: string,

@@ -1,8 +1,8 @@
 import type { IndexerClient } from '../indexer/client.js';
 import type { CredentialEvaluation, EvaluationContext, TrustResult, TrustStatus } from './types.js';
-import pino from 'pino';
+import { createLogger } from '../logger.js';
 
-const logger = pino({ name: 'vs-requirements' });
+const logger = createLogger('vs-requirements');
 
 /**
  * Evaluate VS-REQ-2/3/4 requirements.

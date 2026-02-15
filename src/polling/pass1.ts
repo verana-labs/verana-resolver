@@ -5,9 +5,9 @@ import { resolveDID } from '../ssi/did-resolver.js';
 import { dereferenceAllVPs } from '../ssi/vp-dereferencer.js';
 import { addReattemptable } from './reattemptable.js';
 import { markUntrusted } from '../trust/trust-store.js';
-import pino from 'pino';
+import { createLogger } from '../logger.js';
 
-const logger = pino({ name: 'pass1' });
+const logger = createLogger('pass1');
 
 export function extractAffectedDids(activity: ActivityItem[]): Set<string> {
   const dids = new Set<string>();

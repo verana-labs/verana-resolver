@@ -1,6 +1,6 @@
-import pino from 'pino';
+import { createLogger } from '../logger.js';
 
-const logger = pino({ name: 'indexer-ws' });
+const logger = createLogger('indexer-ws');
 
 const MAX_BACKOFF_MS = 30_000;
 const INITIAL_BACKOFF_MS = 1_000;
@@ -13,7 +13,7 @@ export interface BlockProcessedEvent {
 
 /**
  * Derives the WebSocket URL from the Indexer HTTP API URL.
- * http(s)://host:port/... → ws(s)://host:port/verana/indexer/v1/events
+ * http(s)://host:port/... \u2192 ws(s)://host:port/verana/indexer/v1/events
  */
 export function deriveWsUrl(indexerApi: string): string {
   const url = new URL(indexerApi);
