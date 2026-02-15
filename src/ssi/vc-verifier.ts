@@ -89,8 +89,10 @@ export async function verifyW3cCredential(
     }
 
     if (!result.isValid) {
-      const errorMsg = result.error?.message ?? 'Credential verification failed';
-      return { verified: false, error: errorMsg };
+      // Surface detailed error: Credo wraps inner errors in result.error.cause
+      const cause = (result.error as Error & { cause?: Error })?.cause;
+      const details = cause?.message ?? result.error?.message ?? 'Credential verification failed';
+      return { verified: false, error: details };
     }
 
     return { verified: true };
