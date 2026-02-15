@@ -262,7 +262,37 @@ async function resolveVtjscToSchema(
     }
   }
 
-  // 2. Otherwise, try matching by json_schema field (e.g. VTJSC URL)
+  // 2. If vtjscId is a URL, dereference the VTJSC to extract the VPR URI
+  if (vtjscId.startsWith('http://') || vtjscId.startsWith('https://')) {
+    try {
+      logger.debug({ vtjscId }, 'Dereferencing VTJSC URL to extract VPR URI');
+      const response = await fetch(vtjscId, {
+        headers: { 'Accept': 'application/json' },
+      });
+      if (response.ok) {
+        const vtjsc = (await response.json()) as Record<string, unknown>;
+        const subject = vtjsc.credentialSubject as Record<string, unknown> | undefined;
+        const vprUri = typeof subject?.id === 'string' && (subject.id as string).startsWith('vpr:')
+          ? subject.id as string
+          : undefined;
+        if (vprUri) {
+          const derivedJsId = parseVprJsonSchemaId(vprUri);
+          if (derivedJsId) {
+            logger.debug({ vtjscId, vprUri, jsId: derivedJsId }, 'Extracted VPR URI from VTJSC, resolving via indexer');
+            const resp = await indexer.getCredentialSchemaByJsonSchemaId(derivedJsId, atBlock);
+            return resp.credential_schema;
+          }
+        }
+        logger.debug({ vtjscId, vprUri: vprUri ?? 'none' }, 'VTJSC fetched but no VPR URI found in credentialSubject.id');
+      } else {
+        logger.debug({ vtjscId, status: response.status }, 'Failed to fetch VTJSC URL');
+      }
+    } catch (err) {
+      logger.debug({ vtjscId, error: err instanceof Error ? err.message : String(err) }, 'Error dereferencing VTJSC URL');
+    }
+  }
+
+  // 3. Fallback: try matching by json_schema field
   try {
     logger.debug({ vtjscId }, 'Resolving schema reference via listCredentialSchemas filter');
     const resp = await indexer.listCredentialSchemas({ json_schema: vtjscId }, atBlock);
