@@ -1,0 +1,61 @@
+# Global configuration for the application
+global: 
+  domain: testnet.verana.network 
+
+# General configuration
+name: verana-resolver
+host: resolver
+replicas: 1
+
+# Image configuration
+image:
+  pullPolicy: IfNotPresent
+  tag: "{{ .Chart.Version }}" # Kept aligned with chart version for consistency
+
+# Service configuration
+service:
+  type: ClusterIP
+  port: 3000
+  targetPort: 3000
+
+# Node scheduling preferences
+nodeSelector:
+  kubernetes.io/hostname: cluster-utc-node-07efe5
+
+# Environment variables consumed by the application
+env:
+  DATABASE_URL: "postgresql://verana:verana@localhost:5432/verana_resolver"
+  REDIS_URL: "redis://localhost:6379"
+  PORT: "3000"
+  LOG_LEVEL: "info"
+  POLL_INTERVAL: "5000"
+  CACHE_TTL: "300"
+  TRUST_TTL: "3600"
+  RETRY_MAX_ATTEMPTS: "5"
+  RETRY_BASE_DELAY: "60"
+  VPR_ALLOWLIST_PATH: "./config/vpr-allowlist.json"
+
+# Additional env variables if needed (list of {name, value})
+extraEnv: []
+
+# Resource requests/limits for the resolver container
+resources:
+  requests:
+    memory: "512Mi"
+    cpu: "250m"
+  limits:
+    memory: "1Gi"
+    cpu: "500m"
+
+# Optional ingress configuration
+ingress:
+  enabled: true
+  host: "{{ .Values.host }}.{{ .Values.global.domain }}"
+  tlsSecret: public.{{ .Values.host }}.{{ .Values.global.domain }}-cert
+  public:
+    enableCors: true
+  private:
+    enableCors: true
+    whitelistSourceRange: "" # e.g. "xxx.xx.xxx.xxx/32"
+    tlsSecret: "private.{{ .Values.host }}.{{ .Values.global.domain }}-cert"
+    host: ""
