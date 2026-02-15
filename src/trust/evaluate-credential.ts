@@ -264,64 +264,64 @@ function parseVprJsonSchemaId(uri: string): string | null {
 }
 
 async function resolveVtjscToSchema(
-  vtjscId: string,
+  schemaRef: string,
   indexer: IndexerClient,
   atBlock?: number,
 ): Promise<CredentialSchema | undefined> {
-  // 1. If vtjscId is a VPR URI, resolve via indexer /verana/cs/v1/js/{id}
-  const jsId = parseVprJsonSchemaId(vtjscId);
-  if (jsId) {
-    try {
-      logger.debug({ vtjscId, jsId }, 'Resolving VPR URI via indexer /verana/cs/v1/js/{id}');
-      const resp = await indexer.getCredentialSchemaByJsonSchemaId(jsId, atBlock);
-      return resp.credential_schema;
-    } catch (err) {
-      logger.debug({ vtjscId, jsId, error: err instanceof Error ? err.message : String(err) }, 'VPR URI resolution failed');
-      return undefined;
-    }
-  }
+  // Determine the VPR URI to search for
+  let vprUri: string | undefined;
 
-  // 2. If vtjscId is a URL, dereference the VTJSC to extract the VPR URI
-  if (vtjscId.startsWith('http://') || vtjscId.startsWith('https://')) {
+  if (schemaRef.startsWith('vpr:')) {
+    // Already a VPR URI (from VTJSC credentialSubject.id)
+    vprUri = schemaRef;
+  } else if (schemaRef.startsWith('http://') || schemaRef.startsWith('https://')) {
+    // VTJSC URL (from regular VC credentialSchema.id) \u2014 dereference to extract VPR URI
     try {
-      logger.debug({ vtjscId }, 'Dereferencing VTJSC URL to extract VPR URI');
-      const response = await fetch(vtjscId, {
+      logger.debug({ schemaRef }, 'Dereferencing VTJSC URL to extract VPR URI');
+      const response = await fetch(schemaRef, {
         headers: { 'Accept': 'application/json' },
       });
       if (response.ok) {
         const vtjsc = (await response.json()) as Record<string, unknown>;
         const subject = vtjsc.credentialSubject as Record<string, unknown> | undefined;
-        const vprUri = typeof subject?.id === 'string' && (subject.id as string).startsWith('vpr:')
-          ? subject.id as string
-          : undefined;
-        if (vprUri) {
-          const derivedJsId = parseVprJsonSchemaId(vprUri);
-          if (derivedJsId) {
-            logger.debug({ vtjscId, vprUri, jsId: derivedJsId }, 'Extracted VPR URI from VTJSC, resolving via indexer');
-            const resp = await indexer.getCredentialSchemaByJsonSchemaId(derivedJsId, atBlock);
-            return resp.credential_schema;
-          }
+        if (typeof subject?.id === 'string' && (subject.id as string).startsWith('vpr:')) {
+          vprUri = subject.id as string;
+          logger.debug({ schemaRef, vprUri }, 'Extracted VPR URI from VTJSC');
+        } else {
+          logger.debug({ schemaRef }, 'VTJSC fetched but no VPR URI found in credentialSubject.id');
         }
-        logger.debug({ vtjscId, vprUri: vprUri ?? 'none' }, 'VTJSC fetched but no VPR URI found in credentialSubject.id');
       } else {
-        logger.debug({ vtjscId, status: response.status }, 'Failed to fetch VTJSC URL');
+        logger.debug({ schemaRef, status: response.status }, 'Failed to fetch VTJSC URL');
       }
     } catch (err) {
-      logger.debug({ vtjscId, error: err instanceof Error ? err.message : String(err) }, 'Error dereferencing VTJSC URL');
+      logger.debug({ schemaRef, error: err instanceof Error ? err.message : String(err) }, 'Error dereferencing VTJSC URL');
     }
   }
 
-  // 3. Fallback: try matching by json_schema field
+  if (!vprUri) {
+    logger.debug({ schemaRef }, 'No VPR URI resolved \u2014 cannot look up on-chain schema');
+    return undefined;
+  }
+
+  // Search on-chain schemas: list all and find the one whose json_schema content has matching $id
   try {
-    logger.debug({ vtjscId }, 'Resolving schema reference via listCredentialSchemas filter');
-    const resp = await indexer.listCredentialSchemas({ json_schema: vtjscId }, atBlock);
-    if (resp.credential_schemas.length > 0) {
-      return resp.credential_schemas[0];
+    logger.debug({ schemaRef, vprUri }, 'Searching on-chain schemas by VPR URI ($id match)');
+    const resp = await indexer.listCredentialSchemas({}, atBlock);
+    for (const schema of resp.schemas) {
+      try {
+        const parsed = JSON.parse(schema.json_schema) as Record<string, unknown>;
+        if (parsed.$id === vprUri) {
+          logger.debug({ schemaRef, vprUri, onChainSchemaId: schema.id, trId: schema.tr_id }, 'On-chain schema matched by $id');
+          return schema;
+        }
+      } catch {
+        // skip unparseable json_schema entries
+      }
     }
-    logger.debug({ vtjscId, schemasReturned: resp.credential_schemas.length }, 'No on-chain schema matched json_schema filter');
+    logger.debug({ schemaRef, vprUri, schemasChecked: resp.schemas.length }, 'No on-chain schema matched VPR URI');
     return undefined;
   } catch (err) {
-    logger.debug({ vtjscId, error: err instanceof Error ? err.message : String(err) }, 'listCredentialSchemas failed');
+    logger.debug({ schemaRef, vprUri, error: err instanceof Error ? err.message : String(err) }, 'listCredentialSchemas failed');
     return undefined;
   }
 }

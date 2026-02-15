@@ -4,6 +4,7 @@ import type {
   TrustRegistryResponse,
   CredentialSchemaResponse,
   CredentialSchemaListResponse,
+  JsonSchemaContentResponse,
   PermissionResponse,
   PermissionListResponse,
   PermissionSessionResponse,
@@ -74,18 +75,12 @@ export class IndexerClient {
     return this.get<CredentialSchemaResponse>(`/verana/cs/v1/get/${id}`, {}, atBlock);
   }
 
-  async getCredentialSchemaByJsonSchemaId(
-    jsId: string,
-    atBlock?: number,
-  ): Promise<CredentialSchemaResponse> {
-    return this.get<CredentialSchemaResponse>(`/verana/cs/v1/js/${jsId}`, {}, atBlock);
-  }
-
   async fetchJsonSchemaContent(
     jsId: string,
     atBlock?: number,
   ): Promise<Record<string, unknown>> {
-    return this.get<Record<string, unknown>>(`/verana/cs/v1/js/${jsId}/content`, {}, atBlock);
+    const resp = await this.get<JsonSchemaContentResponse>(`/verana/cs/v1/js/${jsId}`, {}, atBlock);
+    return JSON.parse(resp.schema) as Record<string, unknown>;
   }
 
   async listCredentialSchemas(

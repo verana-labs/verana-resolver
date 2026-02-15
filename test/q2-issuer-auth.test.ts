@@ -6,7 +6,7 @@ import { IndexerError } from '../src/indexer/errors.js';
 function mockIndexer(overrides: Record<string, unknown> = {}) {
   return {
     listCredentialSchemas: vi.fn().mockResolvedValue({
-      credential_schemas: [
+      schemas: [
         { id: '7', json_schema: 'https://example.com/schemas/regulated-insurer/v1', tr_id: '1' },
       ],
     }),
@@ -133,7 +133,7 @@ describe('Q2 /v1/trust/issuer-authorization \u2014 parameter validation', () => 
 describe('Q2 /v1/trust/issuer-authorization \u2014 schema lookup', () => {
   it('returns 404 when schema not found', async () => {
     const idx = mockIndexer({
-      listCredentialSchemas: vi.fn().mockResolvedValue({ credential_schemas: [] }),
+      listCredentialSchemas: vi.fn().mockResolvedValue({ schemas: [] }),
     });
     const app = await buildApp(idx);
     const res = await app.inject({
