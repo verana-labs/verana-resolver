@@ -24,16 +24,21 @@ nodeSelector:
 
 # Environment variables consumed by the application
 env:
-  DATABASE_URL: "postgresql://verana:verana@localhost:5432/verana_resolver"
+  POSTGRES_HOST: "localhost"
+  POSTGRES_PORT: "5432"
+  POSTGRES_USER: "verana"
+  POSTGRES_PASSWORD: "verana"
+  POSTGRES_DB: "verana_resolver"
   REDIS_URL: "redis://localhost:6379"
+  INDEXER_API: "http://localhost:1317"
   PORT: "3000"
   LOG_LEVEL: "info"
-  POLL_INTERVAL: "5000"
-  CACHE_TTL: "300"
+  INSTANCE_ROLE: "leader"
+  POLL_INTERVAL: "5"
+  CACHE_TTL: "86400"
   TRUST_TTL: "3600"
-  RETRY_MAX_ATTEMPTS: "5"
-  RETRY_BASE_DELAY: "60"
-  VPR_ALLOWLIST_PATH: "./config/vpr-allowlist.json"
+  POLL_OBJECT_CACHING_RETRY_DAYS: "7"
+  ECS_ECOSYSTEM_DIDS: ""
 
 # Additional env variables if needed (list of {name, value})
 extraEnv: []

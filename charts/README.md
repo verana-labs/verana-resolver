@@ -39,16 +39,21 @@ This chart deploys the Verana Trust Resolver (Fastify) as a Deployment with a Se
 
 Defined under `env` with testnet reference values; override per environment:
 
-- `DATABASE_URL` — PostgreSQL connection string
+- `POSTGRES_HOST` — PostgreSQL host address
+- `POSTGRES_PORT` — PostgreSQL port (default: 5432)
+- `POSTGRES_USER` — PostgreSQL username
+- `POSTGRES_PASSWORD` — PostgreSQL password
+- `POSTGRES_DB` — PostgreSQL database name
 - `REDIS_URL` — Redis connection string
+- `INDEXER_API` — URL of the Verana Indexer API
 - `PORT` — Server port (default: 3000)
 - `LOG_LEVEL` — Pino log level (default: info)
-- `POLL_INTERVAL` — Indexer polling interval in ms (default: 5000)
-- `CACHE_TTL` — Cache TTL in seconds (default: 300)
+- `INSTANCE_ROLE` — Instance role: leader or reader (default: leader)
+- `POLL_INTERVAL` — Indexer polling interval in seconds (default: 5)
+- `CACHE_TTL` — Cache TTL in seconds (default: 86400)
 - `TRUST_TTL` — Trust evaluation TTL in seconds (default: 3600)
-- `RETRY_MAX_ATTEMPTS` — Max retry attempts for failed DIDs (default: 5)
-- `RETRY_BASE_DELAY` — Base delay between retries in seconds (default: 60)
-- `VPR_ALLOWLIST_PATH` — Path to VPR allowlist JSON (default: ./config/vpr-allowlist.json)
+- `POLL_OBJECT_CACHING_RETRY_DAYS` — Max retry window in days (default: 7)
+- `ECS_ECOSYSTEM_DIDS` — Comma-separated list of allowed ECS ecosystem DIDs
 
 ### Quick examples
 
@@ -63,6 +68,10 @@ Install/upgrade (override image tag and env vars):
 ```bash
 helm upgrade --install verana-resolver ./charts \
   -n vna-testnet-1 \
-  --set env.DATABASE_URL=postgresql://user:pass@db:5432/resolver \
-  --set env.REDIS_URL=redis://redis:6379
+  --set env.POSTGRES_HOST=db \
+  --set env.POSTGRES_USER=verana \
+  --set env.POSTGRES_PASSWORD=secret \
+  --set env.POSTGRES_DB=verana_resolver \
+  --set env.REDIS_URL=redis://redis:6379 \
+  --set env.INDEXER_API=http://indexer:1317
 ```

@@ -4,24 +4,38 @@ import { loadConfig } from '../src/config/index.js';
 describe('db client configuration', () => {
   beforeEach(() => {
     loadConfig({
-      DATABASE_URL: 'postgresql://localhost:5432/verana_resolver_test',
+      POSTGRES_HOST: 'localhost',
+      POSTGRES_USER: 'verana',
+      POSTGRES_PASSWORD: 'verana',
+      POSTGRES_DB: 'verana_resolver_test',
       REDIS_URL: 'redis://localhost:6379',
+      INDEXER_API: 'http://localhost:1317',
     });
   });
 
-  it('config includes DATABASE_URL', () => {
+  it('config includes POSTGRES_* vars', () => {
     const config = loadConfig({
-      DATABASE_URL: 'postgresql://localhost:5432/verana_resolver_test',
+      POSTGRES_HOST: 'localhost',
+      POSTGRES_PORT: '5432',
+      POSTGRES_USER: 'verana',
+      POSTGRES_PASSWORD: 'verana',
+      POSTGRES_DB: 'verana_resolver_test',
       REDIS_URL: 'redis://localhost:6379',
+      INDEXER_API: 'http://localhost:1317',
     });
-    expect(config.DATABASE_URL).toBe('postgresql://localhost:5432/verana_resolver_test');
+    expect(config.POSTGRES_HOST).toBe('localhost');
+    expect(config.POSTGRES_PORT).toBe(5432);
+    expect(config.POSTGRES_DB).toBe('verana_resolver_test');
   });
 
-  it('rejects invalid DATABASE_URL', () => {
+  it('rejects missing POSTGRES_HOST', () => {
     expect(() =>
       loadConfig({
-        DATABASE_URL: 'not-a-url',
+        POSTGRES_USER: 'verana',
+        POSTGRES_PASSWORD: 'verana',
+        POSTGRES_DB: 'verana_resolver_test',
         REDIS_URL: 'redis://localhost:6379',
+        INDEXER_API: 'http://localhost:1317',
       }),
     ).toThrow('Invalid configuration');
   });
