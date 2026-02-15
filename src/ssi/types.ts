@@ -34,5 +34,6 @@ export interface DereferenceError {
   resource: string;
   resourceType: 'did-document' | 'vp' | 'vc';
   error: string;
+  message?: string;
   timestamp: number;
 }
