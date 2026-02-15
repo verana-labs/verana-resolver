@@ -8,8 +8,7 @@ CREATE TABLE trust_results (
   expires_at      TIMESTAMPTZ NOT NULL
 );
 
-CREATE INDEX idx_trust_expires ON trust_results(expires_at)
-  WHERE expires_at <= NOW();
+CREATE INDEX idx_trust_expires ON trust_results(expires_at);
 
 -- Per-credential evaluation results, linked to the DID
 CREATE TABLE credential_results (
