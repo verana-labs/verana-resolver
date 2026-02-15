@@ -1,9 +1,14 @@
-import { getAgent } from './agent.js';
+import { Resolver } from 'did-resolver';
+import { getResolver as getWebDidResolver } from 'web-did-resolver';
+import { resolveDID as resolveWebVh } from 'didwebvh-ts';
 import { getCachedFile, setCachedFile } from '../cache/file-cache.js';
 import type { ResolvedDIDDocument, DereferenceError } from './types.js';
 import pino from 'pino';
 
 const logger = pino({ name: 'did-resolver' });
+
+// did:web resolver via DIF web-did-resolver
+const webResolver = new Resolver(getWebDidResolver());
 
 export async function resolveDID(did: string): Promise<{
   result?: ResolvedDIDDocument;
@@ -37,44 +42,26 @@ export async function resolveDID(did: string): Promise<{
     logger.debug({ did }, 'DID cache miss');
   }
 
-  // Resolve via Credo agent
-  logger.debug({ did }, 'Resolving DID via Credo agent');
-  try {
-    const agent = getAgent();
-    const resolution = await agent.dids.resolve(did);
+  // Route to the correct resolver based on DID method
+  const method = did.split(':')[1];
+  logger.debug({ did, method }, 'Resolving DID');
 
-    if (resolution.didResolutionMetadata.error || !resolution.didDocument) {
-      const error = resolution.didResolutionMetadata.error ?? 'DID Document not found';
-      const message = (resolution.didResolutionMetadata as Record<string, unknown>).message as string | undefined;
-      logger.debug({ did, error, message: message ?? 'none' }, 'DID resolution failed');
+  try {
+    if (method === 'webvh') {
+      return await resolveDidWebVh(did);
+    } else if (method === 'web') {
+      return await resolveDidWeb(did);
+    } else {
       return {
         error: {
           resource: did,
           resourceType: 'did-document',
-          error,
-          message,
+          error: 'unsupportedDidMethod',
+          message: `DID method '${method}' is not supported`,
           timestamp: Date.now(),
         },
       };
     }
-
-    const didDocJson = resolution.didDocument.toJSON();
-    const serviceCount = Array.isArray((didDocJson as Record<string, unknown>).service)
-      ? ((didDocJson as Record<string, unknown>).service as unknown[]).length
-      : 0;
-    const resolved: ResolvedDIDDocument = {
-      did,
-      didDocument: didDocJson as Record<string, unknown>,
-      cachedAt: Date.now(),
-      validUntil: (resolution.didDocumentMetadata?.nextUpdate as string) ?? undefined,
-    };
-
-    logger.debug({ did, serviceCount, validUntil: resolved.validUntil ?? 'none' }, 'DID resolved successfully');
-
-    // Cache in Redis
-    await setCachedFile(did, JSON.stringify(resolved));
-
-    return { result: resolved };
   } catch (err) {
     const errorMsg = err instanceof Error ? err.message : String(err);
     logger.debug({ did, error: errorMsg }, 'DID resolution threw an exception');
@@ -87,4 +74,74 @@ export async function resolveDID(did: string): Promise<{
       },
     };
   }
+}
+
+async function resolveDidWeb(did: string): Promise<{
+  result?: ResolvedDIDDocument;
+  error?: DereferenceError;
+}> {
+  const resolution = await webResolver.resolve(did);
+
+  if (resolution.didResolutionMetadata.error || !resolution.didDocument) {
+    const error = resolution.didResolutionMetadata.error ?? 'DID Document not found';
+    const message = resolution.didResolutionMetadata.message as string | undefined;
+    logger.debug({ did, error, message: message ?? 'none' }, 'did:web resolution failed');
+    return {
+      error: {
+        resource: did,
+        resourceType: 'did-document',
+        error,
+        message,
+        timestamp: Date.now(),
+      },
+    };
+  }
+
+  const didDoc = resolution.didDocument as Record<string, unknown>;
+  const serviceCount = Array.isArray(didDoc.service) ? (didDoc.service as unknown[]).length : 0;
+  const resolved: ResolvedDIDDocument = {
+    did,
+    didDocument: didDoc,
+    cachedAt: Date.now(),
+    validUntil: (resolution.didDocumentMetadata?.nextUpdate as string) ?? undefined,
+  };
+
+  logger.debug({ did, serviceCount, validUntil: resolved.validUntil ?? 'none' }, 'did:web resolved successfully');
+  await setCachedFile(did, JSON.stringify(resolved));
+  return { result: resolved };
+}
+
+async function resolveDidWebVh(did: string): Promise<{
+  result?: ResolvedDIDDocument;
+  error?: DereferenceError;
+}> {
+  const resolution = await resolveWebVh(did);
+
+  if (resolution.meta?.error || !resolution.doc) {
+    const error = resolution.meta?.error ?? 'DID Document not found';
+    const message = resolution.meta?.problemDetails?.detail;
+    logger.debug({ did, error, message: message ?? 'none' }, 'did:webvh resolution failed');
+    return {
+      error: {
+        resource: did,
+        resourceType: 'did-document',
+        error,
+        message,
+        timestamp: Date.now(),
+      },
+    };
+  }
+
+  const didDoc = resolution.doc as Record<string, unknown>;
+  const serviceCount = Array.isArray(didDoc.service) ? (didDoc.service as unknown[]).length : 0;
+  const resolved: ResolvedDIDDocument = {
+    did,
+    didDocument: didDoc,
+    cachedAt: Date.now(),
+    validUntil: (resolution.meta?.updated as string) ?? undefined,
+  };
+
+  logger.debug({ did, serviceCount, validUntil: resolved.validUntil ?? 'none' }, 'did:webvh resolved successfully');
+  await setCachedFile(did, JSON.stringify(resolved));
+  return { result: resolved };
 }
