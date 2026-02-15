@@ -13,6 +13,7 @@ import { getPool, closePool } from './db/index.js';
 import { runMigrations } from './db/migrate.js';
 import { connectRedis, disconnectRedis } from './cache/redis-client.js';
 import { startPollingLoop } from './polling/polling-loop.js';
+import { createInjectDidRoute } from './routes/inject-did.js';
 import pino from 'pino';
 
 const logger = pino({ name: 'main' });
@@ -70,6 +71,12 @@ async function main(): Promise<void> {
   await createQ2Route(indexer)(server);
   await createQ3Route(indexer)(server);
   await createQ4Route(indexer)(server);
+
+  // Dev-mode: inject DID endpoint
+  if (config.INJECT_DID_ENDPOINT_ENABLED) {
+    await createInjectDidRoute(indexer, config)(server);
+    logger.info('Dev endpoint enabled: POST /v1/inject/did');
+  }
 
   // 4. Start polling loop for leader instances (if polling is enabled)
   const abortController = new AbortController();
