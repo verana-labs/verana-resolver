@@ -4,9 +4,14 @@ import { loadConfig } from '../src/config/index.js';
 describe('loadConfig', () => {
   it('loads valid configuration from env', () => {
     const config = loadConfig({
-      DATABASE_URL: 'postgresql://localhost:5432/test',
+      POSTGRES_HOST: 'localhost',
+      POSTGRES_USER: 'verana',
+      POSTGRES_PASSWORD: 'verana',
+      POSTGRES_DB: 'verana_resolver',
       REDIS_URL: 'redis://localhost:6379',
+      INDEXER_API: 'http://localhost:1317',
     });
+    expect(config.POSTGRES_PORT).toBe(5432);
     expect(config.POLL_INTERVAL).toBe(5);
     expect(config.CACHE_TTL).toBe(86400);
     expect(config.TRUST_TTL).toBe(3600);
@@ -14,31 +19,45 @@ describe('loadConfig', () => {
     expect(config.INSTANCE_ROLE).toBe('leader');
     expect(config.PORT).toBe(3000);
     expect(config.LOG_LEVEL).toBe('info');
+    expect(config.ECS_ECOSYSTEM_DIDS).toBe('');
   });
 
   it('overrides defaults with provided values', () => {
     const config = loadConfig({
-      DATABASE_URL: 'postgresql://localhost:5432/test',
+      POSTGRES_HOST: 'db.example.com',
+      POSTGRES_PORT: '5433',
+      POSTGRES_USER: 'admin',
+      POSTGRES_PASSWORD: 'secret',
+      POSTGRES_DB: 'mydb',
       REDIS_URL: 'redis://localhost:6379',
+      INDEXER_API: 'http://indexer:1317',
       POLL_INTERVAL: '10',
       CACHE_TTL: '43200',
       TRUST_TTL: '1800',
       INSTANCE_ROLE: 'reader',
       PORT: '8080',
       LOG_LEVEL: 'debug',
+      ECS_ECOSYSTEM_DIDS: 'did:web:eco1.example.com,did:web:eco2.example.com',
     });
+    expect(config.POSTGRES_HOST).toBe('db.example.com');
+    expect(config.POSTGRES_PORT).toBe(5433);
     expect(config.POLL_INTERVAL).toBe(10);
     expect(config.CACHE_TTL).toBe(43200);
     expect(config.TRUST_TTL).toBe(1800);
     expect(config.INSTANCE_ROLE).toBe('reader');
     expect(config.PORT).toBe(8080);
     expect(config.LOG_LEVEL).toBe('debug');
+    expect(config.ECS_ECOSYSTEM_DIDS).toBe('did:web:eco1.example.com,did:web:eco2.example.com');
   });
 
-  it('throws on missing required DATABASE_URL', () => {
+  it('throws on missing required POSTGRES_HOST', () => {
     expect(() =>
       loadConfig({
+        POSTGRES_USER: 'verana',
+        POSTGRES_PASSWORD: 'verana',
+        POSTGRES_DB: 'verana_resolver',
         REDIS_URL: 'redis://localhost:6379',
+        INDEXER_API: 'http://localhost:1317',
       }),
     ).toThrow('Invalid configuration');
   });
@@ -46,7 +65,23 @@ describe('loadConfig', () => {
   it('throws on missing required REDIS_URL', () => {
     expect(() =>
       loadConfig({
-        DATABASE_URL: 'postgresql://localhost:5432/test',
+        POSTGRES_HOST: 'localhost',
+        POSTGRES_USER: 'verana',
+        POSTGRES_PASSWORD: 'verana',
+        POSTGRES_DB: 'verana_resolver',
+        INDEXER_API: 'http://localhost:1317',
+      }),
+    ).toThrow('Invalid configuration');
+  });
+
+  it('throws on missing required INDEXER_API', () => {
+    expect(() =>
+      loadConfig({
+        POSTGRES_HOST: 'localhost',
+        POSTGRES_USER: 'verana',
+        POSTGRES_PASSWORD: 'verana',
+        POSTGRES_DB: 'verana_resolver',
+        REDIS_URL: 'redis://localhost:6379',
       }),
     ).toThrow('Invalid configuration');
   });
@@ -54,8 +89,12 @@ describe('loadConfig', () => {
   it('throws on invalid INSTANCE_ROLE', () => {
     expect(() =>
       loadConfig({
-        DATABASE_URL: 'postgresql://localhost:5432/test',
+        POSTGRES_HOST: 'localhost',
+        POSTGRES_USER: 'verana',
+        POSTGRES_PASSWORD: 'verana',
+        POSTGRES_DB: 'verana_resolver',
         REDIS_URL: 'redis://localhost:6379',
+        INDEXER_API: 'http://localhost:1317',
         INSTANCE_ROLE: 'invalid',
       }),
     ).toThrow('Invalid configuration');

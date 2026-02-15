@@ -10,17 +10,25 @@ const envSchema = z.object({
   TRUST_TTL: z.coerce.number().int().positive().default(3600),
   POLL_OBJECT_CACHING_RETRY_DAYS: z.coerce.number().int().positive().default(7),
 
+  // PostgreSQL
+  POSTGRES_HOST: z.string(),
+  POSTGRES_PORT: z.coerce.number().int().positive().default(5432),
+  POSTGRES_USER: z.string(),
+  POSTGRES_PASSWORD: z.string(),
+  POSTGRES_DB: z.string(),
+
   // Infrastructure
-  DATABASE_URL: z.string().url(),
   REDIS_URL: z.string().url(),
   INSTANCE_ROLE: InstanceRole.default('leader'),
+
+  // Indexer
+  INDEXER_API: z.string().url(),
+  ECS_ECOSYSTEM_DIDS: z.string().default(''),
 
   // Server
   PORT: z.coerce.number().int().positive().default(3000),
   LOG_LEVEL: LogLevel.default('info'),
 
-  // VPR allowlist
-  VPR_ALLOWLIST_PATH: z.string().default('config/vpr-allowlist.json'),
 });
 
 export type EnvConfig = z.infer<typeof envSchema>;

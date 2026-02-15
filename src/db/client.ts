@@ -9,7 +9,11 @@ export function getPool(): pg.Pool {
   if (_pool === null) {
     const config = getConfig();
     _pool = new Pool({
-      connectionString: config.DATABASE_URL,
+      host: config.POSTGRES_HOST,
+      port: config.POSTGRES_PORT,
+      user: config.POSTGRES_USER,
+      password: config.POSTGRES_PASSWORD,
+      database: config.POSTGRES_DB,
       max: 20,
       idleTimeoutMillis: 30000,
       connectionTimeoutMillis: 5000,

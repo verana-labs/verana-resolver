@@ -27,13 +27,18 @@ The **Verana Trust Resolver** is a core infrastructure component of the [Verana]
 
 | Variable | Description |
 |---|---|
-| `DATABASE_URL` | PostgreSQL connection string (e.g. `postgresql://user:pass@host:5432/db`) |
+| `POSTGRES_HOST` | PostgreSQL host address |
+| `POSTGRES_USER` | PostgreSQL username |
+| `POSTGRES_PASSWORD` | PostgreSQL password |
+| `POSTGRES_DB` | PostgreSQL database name |
 | `REDIS_URL` | Redis connection string (e.g. `redis://host:6379`) |
+| `INDEXER_API` | URL of the Verana Indexer API (e.g. `http://indexer:1317`) |
 
 ### Optional
 
 | Variable | Default | Description |
 |---|---|---|
+| `POSTGRES_PORT` | `5432` | PostgreSQL port |
 | `PORT` | `3000` | HTTP listen port |
 | `LOG_LEVEL` | `info` | Log level: `debug`, `info`, `warn`, `error` |
 | `INSTANCE_ROLE` | `leader` | Instance role: `leader` (runs polling loop) or `reader` (API-only) |
@@ -41,7 +46,7 @@ The **Verana Trust Resolver** is a core infrastructure component of the [Verana]
 | `CACHE_TTL` | `86400` | Dereferenced object cache TTL in seconds (24h) |
 | `TRUST_TTL` | `3600` | Trust evaluation result TTL in seconds (1h) |
 | `POLL_OBJECT_CACHING_RETRY_DAYS` | `7` | Maximum retry window for failed dereferencing (days) |
-| `VPR_ALLOWLIST_PATH` | `config/vpr-allowlist.json` | Path to the VPR allowlist configuration file |
+| `ECS_ECOSYSTEM_DIDS` | *(empty)* | Comma-separated list of allowed ECS ecosystem DIDs |
 
 ## Tech Stack
 

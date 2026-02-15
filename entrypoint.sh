@@ -3,8 +3,12 @@ set -e
 
 # Validate required environment variables
 REQUIRED_VARS="
-DATABASE_URL
+POSTGRES_HOST
+POSTGRES_USER
+POSTGRES_PASSWORD
+POSTGRES_DB
 REDIS_URL
+INDEXER_API
 "
 
 echo "Validating environment variables..."

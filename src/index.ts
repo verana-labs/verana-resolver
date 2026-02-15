@@ -1,6 +1,5 @@
 import Fastify from 'fastify';
 import { loadConfig } from './config/index.js';
-import { loadVprAllowlist } from './config/vpr-allowlist.js';
 import { registerQ1Route } from './routes/q1-resolve.js';
 import { createQ2Route } from './routes/q2-issuer-auth.js';
 import { createQ3Route } from './routes/q3-verifier-auth.js';
@@ -11,7 +10,6 @@ import { registry, queryDurationSeconds } from './observability/metrics.js';
 
 async function main(): Promise<void> {
   const config = loadConfig();
-  const allowlist = loadVprAllowlist(config.VPR_ALLOWLIST_PATH);
 
   const server = Fastify({
     logger: {
@@ -42,14 +40,14 @@ async function main(): Promise<void> {
   await registerQ1Route(server);
 
   // Q2+ endpoints need IndexerClient
-  const indexer = new IndexerClient(allowlist.vprs[0]?.indexerUrl ?? 'http://localhost:3001');
+  const indexer = new IndexerClient(config.INDEXER_API);
   await createQ2Route(indexer)(server);
   await createQ3Route(indexer)(server);
   await createQ4Route(indexer)(server);
 
   await server.listen({ port: config.PORT, host: '0.0.0.0' });
   server.log.info(
-    `Verana Trust Resolver started (role=${config.INSTANCE_ROLE}, vprs=${allowlist.vprs.length})`,
+    `Verana Trust Resolver started (role=${config.INSTANCE_ROLE}, indexer=${config.INDEXER_API})`,
   );
 
   server.log.info('Health: /v1/health | Readiness: /v1/health/ready | Metrics: /metrics');

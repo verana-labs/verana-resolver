@@ -34,8 +34,13 @@ vi.mock('../src/cache/file-cache.js', () => ({
 
 vi.mock('../src/config/index.js', () => ({
   loadConfig: vi.fn().mockReturnValue({
-    DATABASE_URL: 'postgresql://localhost/test',
+    POSTGRES_HOST: 'localhost',
+    POSTGRES_PORT: 5432,
+    POSTGRES_USER: 'verana',
+    POSTGRES_PASSWORD: 'verana',
+    POSTGRES_DB: 'test',
     REDIS_URL: 'redis://localhost:6379',
+    INDEXER_API: 'http://localhost:1317',
     INSTANCE_ROLE: 'leader',
     PORT: 3000,
     LOG_LEVEL: 'info',
@@ -43,11 +48,16 @@ vi.mock('../src/config/index.js', () => ({
     CACHE_TTL: 86400,
     TRUST_TTL: 3600,
     POLL_OBJECT_CACHING_RETRY_DAYS: 7,
-    VPR_ALLOWLIST_PATH: 'config/vpr-allowlist.json',
+    ECS_ECOSYSTEM_DIDS: '',
   }),
   getConfig: vi.fn().mockReturnValue({
-    DATABASE_URL: 'postgresql://localhost/test',
+    POSTGRES_HOST: 'localhost',
+    POSTGRES_PORT: 5432,
+    POSTGRES_USER: 'verana',
+    POSTGRES_PASSWORD: 'verana',
+    POSTGRES_DB: 'test',
     REDIS_URL: 'redis://localhost:6379',
+    INDEXER_API: 'http://localhost:1317',
     INSTANCE_ROLE: 'leader',
     PORT: 3000,
     LOG_LEVEL: 'info',
@@ -55,7 +65,7 @@ vi.mock('../src/config/index.js', () => ({
     CACHE_TTL: 86400,
     TRUST_TTL: 3600,
     POLL_OBJECT_CACHING_RETRY_DAYS: 7,
-    VPR_ALLOWLIST_PATH: 'config/vpr-allowlist.json',
+    ECS_ECOSYSTEM_DIDS: '',
   }),
 }));
 
