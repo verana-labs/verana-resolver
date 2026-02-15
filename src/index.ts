@@ -23,8 +23,9 @@ async function main(): Promise<void> {
   const config = loadConfig();
 
   // 1. Initialize Credo SSI agent (W3C VC verification only; DID resolution uses DIF libraries)
+  const postgresUrl = `postgresql://${config.POSTGRES_USER}:${config.POSTGRES_PASSWORD}@${config.POSTGRES_HOST}:${config.POSTGRES_PORT}/${config.POSTGRES_DB}`;
   logger.info('Initializing SSI agent...');
-  await initializeAgent();
+  await initializeAgent(postgresUrl);
 
   // 2. Connect to PostgreSQL and run pending migrations
   logger.info('Connecting to PostgreSQL and running migrations...');
