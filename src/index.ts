@@ -7,9 +7,33 @@ import { createQ4Route } from './routes/q4-ecosystem-participant.js';
 import { registerHealthRoutes } from './routes/health.js';
 import { IndexerClient } from './indexer/client.js';
 import { registry, queryDurationSeconds } from './observability/metrics.js';
+import { initializeAgent, shutdownAgent } from './ssi/agent.js';
+import { getPool, closePool } from './db/index.js';
+import { runMigrations } from './db/migrate.js';
+import { connectRedis, disconnectRedis } from './cache/redis-client.js';
+import { startPollingLoop } from './polling/polling-loop.js';
+import pino from 'pino';
+
+const logger = pino({ name: 'main' });
 
 async function main(): Promise<void> {
   const config = loadConfig();
+
+  // 1. Initialize Credo SSI agent (did:web, did:webvh, W3C VC verification)
+  logger.info('Initializing SSI agent...');
+  await initializeAgent();
+
+  // 2. Connect to PostgreSQL and run pending migrations
+  logger.info('Connecting to PostgreSQL and running migrations...');
+  const pool = getPool();
+  const applied = await runMigrations(pool);
+  if (applied.length > 0) {
+    logger.info({ migrations: applied }, 'Applied database migrations');
+  }
+
+  // 3. Connect to Redis (file cache for DID docs, VPs, VCs)
+  logger.info('Connecting to Redis...');
+  await connectRedis();
 
   const server = Fastify({
     logger: {
@@ -22,7 +46,7 @@ async function main(): Promise<void> {
     const url = request.routeOptions?.url ?? request.url;
     // Skip metrics/health from histogram
     if (!url.startsWith('/metrics') && !url.startsWith('/v1/health')) {
-      const duration = reply.elapsedTime / 1000; // ms → seconds
+      const duration = reply.elapsedTime / 1000; // ms \u2192 seconds
       queryDurationSeconds.observe({ endpoint: url, status_code: reply.statusCode }, duration);
     }
     done();
@@ -44,6 +68,33 @@ async function main(): Promise<void> {
   await createQ2Route(indexer)(server);
   await createQ3Route(indexer)(server);
   await createQ4Route(indexer)(server);
+
+  // 4. Start polling loop for leader instances
+  const abortController = new AbortController();
+  if (config.INSTANCE_ROLE === 'leader') {
+    startPollingLoop({
+      indexer,
+      config,
+      signal: abortController.signal,
+    }).catch((err) => {
+      logger.error({ err }, 'Polling loop exited with error');
+    });
+  }
+
+  // 5. Graceful shutdown
+  const shutdown = async (signal: string) => {
+    logger.info({ signal }, 'Shutdown signal received');
+    abortController.abort();
+    await server.close();
+    await shutdownAgent();
+    await disconnectRedis();
+    await closePool();
+    logger.info('Shutdown complete');
+    process.exit(0);
+  };
+
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
+  process.on('SIGINT', () => shutdown('SIGINT'));
 
   await server.listen({ port: config.PORT, host: '0.0.0.0' });
   server.log.info(

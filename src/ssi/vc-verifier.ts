@@ -1,3 +1,9 @@
+import {
+  JsonTransformer,
+  W3cJsonLdVerifiableCredential,
+  W3cJwtVerifiableCredential,
+} from '@credo-ts/core';
+import { getAgent } from './agent.js';
 import type { DereferencedVC } from './types.js';
 
 export function extractCredentialsFromVP(vp: Record<string, unknown>): DereferencedVC[] {
@@ -66,18 +72,39 @@ export function extractCredentialSchemaId(vc: Record<string, unknown>): string |
 }
 
 export async function verifyW3cCredential(
-  _vc: Record<string, unknown>,
+  vc: Record<string, unknown>,
 ): Promise<{ verified: boolean; error?: string }> {
-  // TODO: Implement full verification via Credo agent
-  // const agent = getAgent();
-  // const result = await agent.w3cCredentials.verifyCredential({ credential });
-  // return { verified: result.isValid, error: result.error?.message };
-  return { verified: false, error: 'W3C verification not yet implemented — requires Credo agent' };
+  try {
+    const agent = getAgent();
+
+    let result;
+    if (typeof vc.raw === 'string') {
+      // JWT-encoded VC (compact JWS)
+      const credential = W3cJwtVerifiableCredential.fromSerializedJwt(vc.raw);
+      result = await agent.w3cCredentials.verifyCredential({ credential });
+    } else {
+      // JSON-LD VC
+      const credential = JsonTransformer.fromJSON(vc, W3cJsonLdVerifiableCredential);
+      result = await agent.w3cCredentials.verifyCredential({ credential });
+    }
+
+    if (!result.isValid) {
+      const errorMsg = result.error?.message ?? 'Credential verification failed';
+      return { verified: false, error: errorMsg };
+    }
+
+    return { verified: true };
+  } catch (err) {
+    return { verified: false, error: err instanceof Error ? err.message : String(err) };
+  }
 }
 
 export async function verifyAnonCredsCredential(
   _vc: Record<string, unknown>,
 ): Promise<{ verified: boolean; error?: string }> {
-  // TODO: Implement via @credo-ts/anoncreds
-  return { verified: false, error: 'AnonCreds verification not yet implemented' };
+  // AnonCreds verification requires resolving credential definitions,
+  // schemas, and revocation registries from the Verana chain via an
+  // AnonCredsRegistry implementation. This will be implemented once the
+  // WebVhAnonCredsRegistry integration is in place.
+  return { verified: false, error: 'AnonCreds verification not yet implemented \u2014 requires registry integration' };
 }
