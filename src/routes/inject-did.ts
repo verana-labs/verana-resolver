@@ -22,7 +22,33 @@ export function createInjectDidRoute(
   config: EnvConfig,
 ): (server: FastifyInstance) => Promise<void> {
   return async (server: FastifyInstance) => {
-    server.post<{ Body: InjectDidBody }>('/v1/inject/did', async (request, reply) => {
+    server.post<{ Body: InjectDidBody }>('/v1/inject/did', {
+      schema: {
+        tags: ['Dev'],
+        summary: 'Inject a DID for evaluation (dev mode)',
+        description: 'Processes a DID through Pass1 (DID resolution + VP dereferencing) and Pass2 (trust evaluation) as if it were received during polling. Only available when INJECT_DID_ENDPOINT_ENABLED=true.',
+        body: {
+          type: 'object',
+          properties: {
+            did: { type: 'string', description: 'DID to inject (e.g. did:web:example.com)' },
+          },
+        },
+        response: {
+          200: {
+            type: 'object',
+            properties: {
+              did: { type: 'string' },
+              pass1: { type: 'string', enum: ['ok', 'failed'] },
+              pass2: { type: 'string', enum: ['ok', 'failed', 'skipped'] },
+            },
+          },
+          400: {
+            type: 'object',
+            properties: { error: { type: 'string' }, message: { type: 'string' } },
+          },
+        },
+      },
+    }, async (request, reply) => {
       const { did } = request.body ?? {};
 
       if (!did || typeof did !== 'string' || !did.startsWith('did:')) {

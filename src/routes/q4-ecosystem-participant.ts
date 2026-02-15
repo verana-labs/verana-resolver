@@ -12,6 +12,26 @@ export function createQ4Route(indexer: IndexerClient) {
   return async function registerQ4Route(server: FastifyInstance): Promise<void> {
     server.get<{ Querystring: Q4QueryString }>(
       '/v1/trust/ecosystem-participant',
+      {
+        schema: {
+          tags: ['Trust'],
+          summary: 'Check ecosystem participation for a DID',
+          description: 'Returns all active permissions a DID holds within a specific ecosystem (Trust Registry).',
+          querystring: {
+            type: 'object',
+            properties: {
+              did: { type: 'string', description: 'Participant DID' },
+              ecosystemDid: { type: 'string', description: 'Ecosystem DID (Trust Registry owner)' },
+              at: { type: 'string', description: 'Optional block height for point-in-time query' },
+            },
+          },
+          response: {
+            200: { type: 'object', additionalProperties: true, description: 'Ecosystem participation result' },
+            400: { type: 'object', properties: { error: { type: 'string' }, message: { type: 'string' } } },
+            404: { type: 'object', properties: { error: { type: 'string' }, message: { type: 'string' } } },
+          },
+        },
+      },
       async (request: FastifyRequest<{ Querystring: Q4QueryString }>, reply: FastifyReply) => {
         const { did, ecosystemDid, at } = request.query;
 

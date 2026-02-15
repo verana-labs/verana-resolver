@@ -50,8 +50,28 @@ function computeStatus(
 export async function registerHealthRoutes(server: FastifyInstance): Promise<void> {
   const config = getConfig();
 
-  // Liveness — returns 200 if the process is running
-  server.get('/v1/health', async (_request, reply) => {
+  // Liveness \u2014 returns 200 if the process is running
+  server.get('/v1/health', {
+    schema: {
+      tags: ['Health'],
+      summary: 'Liveness check',
+      description: 'Returns 200 if the process is running, along with component status.',
+      response: {
+        200: {
+          type: 'object',
+          properties: {
+            status: { type: 'string', enum: ['ok', 'syncing', 'degraded'] },
+            lastProcessedBlock: { type: 'number' },
+            indexerBlockHeight: { type: ['number', 'null'] },
+            blockLag: { type: ['number', 'null'] },
+            instanceRole: { type: 'string' },
+            postgresConnected: { type: 'boolean' },
+            redisConnected: { type: 'boolean' },
+          },
+        },
+      },
+    },
+  }, async (_request, reply) => {
     const pgConnected = await checkPostgres();
     const redisConnected = isRedisReady();
 
@@ -80,8 +100,30 @@ export async function registerHealthRoutes(server: FastifyInstance): Promise<voi
     return reply.send(response);
   });
 
-  // Readiness — returns 200 only if initial sync complete and PostgreSQL reachable
-  server.get('/v1/health/ready', async (_request, reply) => {
+  // Readiness \u2014 returns 200 only if initial sync complete and PostgreSQL reachable
+  server.get('/v1/health/ready', {
+    schema: {
+      tags: ['Health'],
+      summary: 'Readiness check',
+      description: 'Returns 200 only if initial sync is complete and PostgreSQL is reachable.',
+      response: {
+        200: {
+          type: 'object',
+          properties: {
+            status: { type: 'string', enum: ['ready'] },
+            lastProcessedBlock: { type: 'number' },
+          },
+        },
+        503: {
+          type: 'object',
+          properties: {
+            error: { type: 'string' },
+            message: { type: 'string' },
+          },
+        },
+      },
+    },
+  }, async (_request, reply) => {
     const pgConnected = await checkPostgres();
     if (!pgConnected) {
       return reply.status(503).send({
