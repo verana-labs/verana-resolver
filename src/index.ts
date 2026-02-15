@@ -22,10 +22,9 @@ const logger = pino({ name: 'main' });
 async function main(): Promise<void> {
   const config = loadConfig();
 
-  // 1. Initialize Credo SSI agent (did:web, did:webvh, W3C VC verification)
-  const postgresUrl = `postgresql://${config.POSTGRES_USER}:${config.POSTGRES_PASSWORD}@${config.POSTGRES_HOST}:${config.POSTGRES_PORT}/${config.POSTGRES_DB}`;
+  // 1. Initialize Credo SSI agent (W3C VC verification only; DID resolution uses DIF libraries)
   logger.info('Initializing SSI agent...');
-  await initializeAgent(postgresUrl);
+  await initializeAgent();
 
   // 2. Connect to PostgreSQL and run pending migrations
   logger.info('Connecting to PostgreSQL and running migrations...');
