@@ -35,6 +35,9 @@ const envSchema = z.object({
   // Dev mode
   INJECT_DID_ENDPOINT_ENABLED: booleanFromEnv.default(false),
 
+  // Verification
+  DISABLE_DIGEST_SRI_VERIFICATION: booleanFromEnv.default(false),
+
   // Server
   PORT: z.coerce.number().int().positive().default(3000),
   LOG_LEVEL: LogLevel.default('info'),

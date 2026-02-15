@@ -12,6 +12,7 @@ import type {
   FailedCredential,
 } from './types.js';
 import { createLogger } from '../logger.js';
+import { getConfig } from '../config/index.js';
 
 const logger = createLogger('evaluate-credential');
 
@@ -93,29 +94,33 @@ export async function evaluateCredential(
 
     // 2b. Verify digestSRI of the JSON schema content from the VPR
     if (isVtjsc && schema) {
-      const vtjscSubject = vc.vc.credentialSubject as Record<string, unknown> | undefined;
-      const expectedDigestSri = typeof vtjscSubject?.digestSRI === 'string' ? vtjscSubject.digestSRI as string : undefined;
-      if (expectedDigestSri && schemaRef) {
-        const jsId = parseVprJsonSchemaId(schemaRef);
-        if (jsId) {
-          try {
-            const jsonSchemaContent = await indexer.fetchJsonSchemaContent(jsId, ctx.currentBlock);
-            const digestResult = await verifySriDigest(jsonSchemaContent, expectedDigestSri);
-            if (!digestResult.valid) {
-              const error = `JSON schema digestSRI mismatch: expected=${expectedDigestSri}, computed=${digestResult.computed ?? 'unknown'}`;
-              logger.warn({ vcId: vc.vcId, schemaRef, jsId, expected: expectedDigestSri, computed: digestResult.computed }, 'JSON schema digestSRI verification FAILED');
-              return {
-                failed: {
-                  id: vc.vcId,
-                  format: formatToString(vc.format),
-                  error,
-                  errorCode: 'DIGEST_SRI_MISMATCH',
-                },
-              };
+      if (getConfig().DISABLE_DIGEST_SRI_VERIFICATION) {
+        logger.info({ vcId: vc.vcId, schemaRef: schemaRef ?? 'none' }, 'Digest SRI verification OMITTED (DISABLE_DIGEST_SRI_VERIFICATION=true)');
+      } else {
+        const vtjscSubject = vc.vc.credentialSubject as Record<string, unknown> | undefined;
+        const expectedDigestSri = typeof vtjscSubject?.digestSRI === 'string' ? vtjscSubject.digestSRI as string : undefined;
+        if (expectedDigestSri && schemaRef) {
+          const jsId = parseVprJsonSchemaId(schemaRef);
+          if (jsId) {
+            try {
+              const jsonSchemaContent = await indexer.fetchJsonSchemaContent(jsId, ctx.currentBlock);
+              const digestResult = await verifySriDigest(jsonSchemaContent, expectedDigestSri);
+              if (!digestResult.valid) {
+                const error = `JSON schema digestSRI mismatch: expected=${expectedDigestSri}, computed=${digestResult.computed ?? 'unknown'}`;
+                logger.warn({ vcId: vc.vcId, schemaRef, jsId, expected: expectedDigestSri, computed: digestResult.computed }, 'JSON schema digestSRI verification FAILED');
+                return {
+                  failed: {
+                    id: vc.vcId,
+                    format: formatToString(vc.format),
+                    error,
+                    errorCode: 'DIGEST_SRI_MISMATCH',
+                  },
+                };
+              }
+              logger.debug({ vcId: vc.vcId, digestSri: expectedDigestSri }, 'JSON schema digestSRI verified OK');
+            } catch (err) {
+              logger.warn({ vcId: vc.vcId, jsId, error: err instanceof Error ? err.message : String(err) }, 'Failed to fetch JSON schema content for digestSRI verification');
             }
-            logger.debug({ vcId: vc.vcId, digestSri: expectedDigestSri }, 'JSON schema digestSRI verified OK');
-          } catch (err) {
-            logger.warn({ vcId: vc.vcId, jsId, error: err instanceof Error ? err.message : String(err) }, 'Failed to fetch JSON schema content for digestSRI verification');
           }
         }
       }
