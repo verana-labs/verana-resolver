@@ -90,6 +90,9 @@ const AUGMENTED_EXAMPLES_V1: Record<string, unknown> = {
  * 3. Falls back to network fetch for all other URLs
  */
 export function createDocumentLoader(): DocumentLoader {
+  // In-memory cache for fetched contexts (avoids redundant network requests)
+  const contextCache = new Map<string, Record<string, unknown>>();
+
   async function loader(url: string): Promise<DocumentLoaderResult> {
     // 1. Augmented examples/v1 context
     if (url === EXAMPLES_V1_URL) {
@@ -100,12 +103,18 @@ export function createDocumentLoader(): DocumentLoader {
     if (url.startsWith('did:')) {
       const { result, error } = await resolveDID(url);
       if (!result || error) {
-        throw new Error(`Cannot resolve DID for JSON-LD document loader: ${url} — ${error?.error ?? 'unknown'}`);
+        throw new Error(`Cannot resolve DID for JSON-LD document loader: ${url} \u2014 ${error?.error ?? 'unknown'}`);
       }
       return { contextUrl: null, documentUrl: url, document: result.didDocument };
     }
 
-    // 3. Network fetch
+    // 3. Check in-memory context cache
+    const cached = contextCache.get(url);
+    if (cached) {
+      return { contextUrl: null, documentUrl: url, document: cached };
+    }
+
+    // 4. Network fetch
     logger.debug({ url }, 'Fetching JSON-LD context from network');
     const response = await fetch(url, {
       headers: { 'Accept': 'application/ld+json, application/json' },
@@ -114,6 +123,7 @@ export function createDocumentLoader(): DocumentLoader {
       throw new Error(`Failed to fetch JSON-LD context ${url}: HTTP ${response.status}`);
     }
     const document = (await response.json()) as Record<string, unknown>;
+    contextCache.set(url, document);
     return { contextUrl: null, documentUrl: url, document };
   }
 
