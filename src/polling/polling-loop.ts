@@ -82,10 +82,21 @@ export async function pollOnce(
 
     // Fetch changes for this block
     const changes = await indexer.listChanges(target);
-    const affectedDids = extractAffectedDids(changes.activity);
+    const activity = changes.activity;
+    const affectedDids = extractAffectedDids(activity);
+
+    // Summarise activity per entity_type, e.g. { trust_registry: 2, credential_schema: 1 }
+    const typeCounts: Record<string, number> = {};
+    for (const item of activity) {
+      typeCounts[item.entity_type] = (typeCounts[item.entity_type] ?? 0) + 1;
+    }
+
+    logger.info(
+      { block: target, activityCount: activity.length, types: typeCounts, dids: affectedDids.size },
+      'Processed block',
+    );
 
     if (affectedDids.size > 0) {
-      logger.info({ block: target, dids: affectedDids.size }, 'Processing block');
 
       // Pass1: dereference affected DIDs
       await runPass1(affectedDids, indexer, target, config.TRUST_TTL);
