@@ -71,9 +71,9 @@ async function main(): Promise<void> {
   await createQ3Route(indexer)(server);
   await createQ4Route(indexer)(server);
 
-  // 4. Start polling loop for leader instances
+  // 4. Start polling loop for leader instances (if polling is enabled)
   const abortController = new AbortController();
-  if (config.INSTANCE_ROLE === 'leader') {
+  if (config.INSTANCE_ROLE === 'leader' && config.ENABLE_POLLING) {
     startPollingLoop({
       indexer,
       config,
@@ -81,6 +81,8 @@ async function main(): Promise<void> {
     }).catch((err) => {
       logger.error({ err }, 'Polling loop exited with error');
     });
+  } else if (!config.ENABLE_POLLING) {
+    logger.info('Polling is disabled (ENABLE_POLLING=false)');
   }
 
   // 5. Graceful shutdown
