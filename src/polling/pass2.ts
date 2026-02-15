@@ -2,9 +2,9 @@ import type { IndexerClient } from '../indexer/client.js';
 import { resolveTrust, createEvaluationContext } from '../trust/resolve-trust.js';
 import { upsertTrustResult } from '../trust/trust-store.js';
 import { addReattemptable } from './reattemptable.js';
-import pino from 'pino';
+import { createLogger } from '../logger.js';
 
-const logger = pino({ name: 'pass2' });
+const logger = createLogger('pass2');
 
 export async function runPass2(
   affectedDids: Set<string>,

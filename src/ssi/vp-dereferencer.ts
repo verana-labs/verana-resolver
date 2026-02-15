@@ -1,9 +1,9 @@
 import { getCachedFile, setCachedFile } from '../cache/file-cache.js';
 import type { LinkedVPEndpoint, DereferencedVP, DereferenceError } from './types.js';
 import { extractCredentialsFromVP } from './vc-verifier.js';
-import pino from 'pino';
+import { createLogger } from '../logger.js';
 
-const logger = pino({ name: 'vp-dereferencer' });
+const logger = createLogger('vp-dereferencer');
 const LINKED_VP_TYPE = 'LinkedVerifiablePresentation';
 const FETCH_TIMEOUT_MS = 10_000;
 

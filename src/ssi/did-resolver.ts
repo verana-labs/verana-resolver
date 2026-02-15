@@ -4,9 +4,9 @@ import { getResolver as getWebDidResolver } from 'web-did-resolver';
 import { resolveDID as resolveWebVh } from 'didwebvh-ts';
 import { getCachedFile, setCachedFile } from '../cache/file-cache.js';
 import type { ResolvedDIDDocument, DereferenceError } from './types.js';
-import pino from 'pino';
+import { createLogger } from '../logger.js';
 
-const logger = pino({ name: 'did-resolver' });
+const logger = createLogger('did-resolver');
 
 // did:web resolver via DIF web-did-resolver
 const webResolver = new Resolver(getWebDidResolver());

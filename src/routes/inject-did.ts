@@ -3,9 +3,9 @@ import type { IndexerClient } from '../indexer/client.js';
 import type { EnvConfig } from '../config/index.js';
 import { runPass1 } from '../polling/pass1.js';
 import { runPass2 } from '../polling/pass2.js';
-import pino from 'pino';
+import { createLogger } from '../logger.js';
 
-const logger = pino({ name: 'inject-did' });
+const logger = createLogger('inject-did');
 
 interface InjectDidBody {
   did: string;

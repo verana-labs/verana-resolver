@@ -15,9 +15,9 @@ import { connectRedis, disconnectRedis } from './cache/redis-client.js';
 import { startPollingLoop } from './polling/polling-loop.js';
 import { createInjectDidRoute } from './routes/inject-did.js';
 import { registerSwagger } from './swagger.js';
-import pino from 'pino';
+import { createLogger } from './logger.js';
 
-const logger = pino({ name: 'main' });
+const logger = createLogger('main');
 
 async function main(): Promise<void> {
   const config = loadConfig();
