@@ -61,7 +61,7 @@ export function createQ3Route(indexer: IndexerClient) {
         let schemaId: string;
         try {
           const schemas = await indexer.listCredentialSchemas({ json_schema: vtjscId }, atBlock);
-          const match = schemas.credential_schemas.find((s) => s.json_schema === vtjscId);
+          const match = schemas.schemas.find((s: { json_schema: string }) => s.json_schema === vtjscId);
           if (!match) {
             return reply.status(404).send({
               error: 'Not Found',

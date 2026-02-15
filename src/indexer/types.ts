@@ -94,11 +94,15 @@ export interface CredentialSchema {
 }
 
 export interface CredentialSchemaResponse {
-  credential_schema: CredentialSchema;
+  schema: CredentialSchema;
+}
+
+export interface JsonSchemaContentResponse {
+  schema: string;
 }
 
 export interface CredentialSchemaListResponse {
-  credential_schemas: CredentialSchema[];
+  schemas: CredentialSchema[];
 }
 
 export interface Permission {

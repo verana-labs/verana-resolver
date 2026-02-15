@@ -34,7 +34,7 @@ function mockIndexer(overrides: Record<string, unknown> = {}) {
       ],
     }),
     listCredentialSchemas: vi.fn().mockResolvedValue({
-      credential_schemas: [
+      schemas: [
         {
           id: '7',
           tr_id: '3',

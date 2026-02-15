@@ -69,7 +69,7 @@ export function createQ4Route(indexer: IndexerClient) {
 
         // --- 2. Get all CredentialSchemas for this ecosystem ---
         const schemasResp = await indexer.listCredentialSchemas({ tr_id: trId }, atBlock);
-        const schemas = schemasResp.credential_schemas;
+        const schemas = schemasResp.schemas;
 
         // --- 3. For each schema, find ACTIVE permissions for did ---
         const allPermissions: Array<Record<string, unknown>> = [];
