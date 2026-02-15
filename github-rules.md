@@ -12,7 +12,7 @@ This document summarizes the GitHub workflow rules and conventions for the **ver
 
 - Create issues with type **"Feature"** (not labels); use dependencies when applicable.
 - Each issue must clearly explain what must be done.
-- **User (mj) assigns issues** — do NOT start work until told.
+- A **repository maintainer** assigns issues — do NOT start work until assigned.
 
 ## Branching
 
@@ -34,8 +34,8 @@ This document summarizes the GitHub workflow rules and conventions for the **ver
 ## Pull Requests
 
 - Create a PR when the work is ready.
-- User (mj) reviews and approves.
-- When the user says **"approved"**, it means they have **merged** the PR to `main`.
+- A **PR reviewer** reviews and approves.
+- When the reviewer says **"approved"**, it means they have **merged** the PR to `main`.
 
 ## Pre-Push Checklist
 
