@@ -28,6 +28,9 @@ const envSchema = z.object({
   // Polling
   ENABLE_POLLING: z.coerce.boolean().default(true),
 
+  // Dev mode
+  INJECT_DID_ENDPOINT_ENABLED: z.coerce.boolean().default(false),
+
   // Server
   PORT: z.coerce.number().int().positive().default(3000),
   LOG_LEVEL: LogLevel.default('info'),
