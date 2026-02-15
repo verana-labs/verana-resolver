@@ -1,7 +1,7 @@
 import type { IndexerClient } from '../indexer/client.js';
 import type { DereferencedVC } from '../ssi/types.js';
 import type { CredentialSchema, Permission } from '../indexer/types.js';
-import { computeDigestSRI } from '../ssi/digest.js';
+import { computeDigestSRI, verifySriDigest } from '../ssi/digest.js';
 import { verifyW3cCredential, verifyAnonCredsCredential } from '../ssi/vc-verifier.js';
 import { buildPermissionChain } from './permission-chain.js';
 import type {
@@ -73,6 +73,34 @@ export async function evaluateCredential(
       }
     } else {
       logger.warn({ vcId: vc.vcId, credentialSchemaId: (vc.vc.credentialSchema as Record<string, unknown>)?.id ?? 'none', credentialSubjectId: (vc.vc.credentialSubject as Record<string, unknown>)?.id ?? 'none' }, 'No VPR URI or credentialSchemaId found on credential');
+    }
+
+    // 2b. Verify digestSRI of the JSON schema content from the VPR
+    const subject = vc.vc.credentialSubject as Record<string, unknown> | undefined;
+    const expectedDigestSri = typeof subject?.digestSRI === 'string' ? subject.digestSRI as string : undefined;
+    if (expectedDigestSri && vtjscId && schema) {
+      const jsId = parseVprJsonSchemaId(vtjscId);
+      if (jsId) {
+        try {
+          const jsonSchemaContent = await indexer.fetchJsonSchemaContent(jsId, ctx.currentBlock);
+          const digestResult = await verifySriDigest(jsonSchemaContent, expectedDigestSri);
+          if (!digestResult.valid) {
+            const error = `JSON schema digestSRI mismatch: expected=${expectedDigestSri}, computed=${digestResult.computed ?? 'unknown'}`;
+            logger.warn({ vcId: vc.vcId, vtjscId, jsId, expected: expectedDigestSri, computed: digestResult.computed }, 'JSON schema digestSRI verification FAILED');
+            return {
+              failed: {
+                id: vc.vcId,
+                format: formatToString(vc.format),
+                error,
+                errorCode: 'DIGEST_SRI_MISMATCH',
+              },
+            };
+          }
+          logger.debug({ vcId: vc.vcId, digestSri: expectedDigestSri }, 'JSON schema digestSRI verified OK');
+        } catch (err) {
+          logger.warn({ vcId: vc.vcId, jsId, error: err instanceof Error ? err.message : String(err) }, 'Failed to fetch JSON schema content for digestSRI verification');
+        }
+      }
     }
 
     // 3. Determine ECS type from VTJSC URI
@@ -234,7 +262,37 @@ async function resolveVtjscToSchema(
     }
   }
 
-  // 2. Otherwise, try matching by json_schema field (e.g. VTJSC URL)
+  // 2. If vtjscId is a URL, dereference the VTJSC to extract the VPR URI
+  if (vtjscId.startsWith('http://') || vtjscId.startsWith('https://')) {
+    try {
+      logger.debug({ vtjscId }, 'Dereferencing VTJSC URL to extract VPR URI');
+      const response = await fetch(vtjscId, {
+        headers: { 'Accept': 'application/json' },
+      });
+      if (response.ok) {
+        const vtjsc = (await response.json()) as Record<string, unknown>;
+        const subject = vtjsc.credentialSubject as Record<string, unknown> | undefined;
+        const vprUri = typeof subject?.id === 'string' && (subject.id as string).startsWith('vpr:')
+          ? subject.id as string
+          : undefined;
+        if (vprUri) {
+          const derivedJsId = parseVprJsonSchemaId(vprUri);
+          if (derivedJsId) {
+            logger.debug({ vtjscId, vprUri, jsId: derivedJsId }, 'Extracted VPR URI from VTJSC, resolving via indexer');
+            const resp = await indexer.getCredentialSchemaByJsonSchemaId(derivedJsId, atBlock);
+            return resp.credential_schema;
+          }
+        }
+        logger.debug({ vtjscId, vprUri: vprUri ?? 'none' }, 'VTJSC fetched but no VPR URI found in credentialSubject.id');
+      } else {
+        logger.debug({ vtjscId, status: response.status }, 'Failed to fetch VTJSC URL');
+      }
+    } catch (err) {
+      logger.debug({ vtjscId, error: err instanceof Error ? err.message : String(err) }, 'Error dereferencing VTJSC URL');
+    }
+  }
+
+  // 3. Fallback: try matching by json_schema field
   try {
     logger.debug({ vtjscId }, 'Resolving schema reference via listCredentialSchemas filter');
     const resp = await indexer.listCredentialSchemas({ json_schema: vtjscId }, atBlock);

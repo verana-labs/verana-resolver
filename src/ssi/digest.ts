@@ -25,3 +25,26 @@ export function computeDigestSRISync(canonicalJson: string): string {
   const hash = createHash('sha256').update(canonicalJson, 'utf8').digest('base64');
   return `sha256-${hash}`;
 }
+
+export async function verifySriDigest(
+  content: Record<string, unknown>,
+  expectedSri: string,
+): Promise<{ valid: boolean; computed?: string }> {
+  const dashIndex = expectedSri.indexOf('-');
+  if (dashIndex === -1) {
+    return { valid: false };
+  }
+
+  const algorithm = expectedSri.substring(0, dashIndex);
+  const expectedHash = expectedSri.substring(dashIndex + 1);
+
+  const canonicalize = await getCanonicalizer();
+  const canonical = canonicalize(content);
+  if (!canonical) {
+    return { valid: false };
+  }
+
+  const hash = createHash(algorithm).update(canonical, 'utf8').digest('base64');
+  const computedSri = `${algorithm}-${hash}`;
+  return { valid: hash === expectedHash, computed: computedSri };
+}
