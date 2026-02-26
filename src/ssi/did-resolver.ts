@@ -28,26 +28,13 @@ export async function resolveDID(did: string): Promise<{
   result?: ResolvedDIDDocument;
   error?: DereferenceError;
 }> {
-  // Check Redis cache first
+  // Check Redis cache first (Redis TTL = CACHE_TTL is the sole expiry mechanism per spec \u00a77.1)
   const cached = await getCachedFile(did);
   if (cached !== null) {
     try {
       const parsed = JSON.parse(cached) as ResolvedDIDDocument;
-
-      // Check validUntil expiry
-      if (parsed.validUntil) {
-        const validUntilDate = new Date(parsed.validUntil);
-        if (validUntilDate.getTime() < Date.now()) {
-          logger.debug({ did, validUntil: parsed.validUntil }, 'DID cache expired \u2014 re-resolving');
-          // Expired \u2014 fall through to re-resolve
-        } else {
-          logger.debug({ did, validUntil: parsed.validUntil }, 'DID cache hit (valid)');
-          return { result: parsed };
-        }
-      } else {
-        logger.debug({ did }, 'DID cache hit (no expiry)');
-        return { result: parsed };
-      }
+      logger.debug({ did, cachedAt: parsed.cachedAt }, 'DID cache hit');
+      return { result: parsed };
     } catch {
       logger.debug({ did }, 'DID cache entry invalid \u2014 re-resolving');
       // Invalid cache entry \u2014 re-resolve
@@ -152,7 +139,9 @@ async function resolveDidWebVh(did: string): Promise<{
     did,
     didDocument: didDoc,
     cachedAt: Date.now(),
-    validUntil: (resolution.meta?.updated as string) ?? undefined,
+    // meta.updated is the last-update timestamp (always in the past), not a next-update hint.
+    // Cache expiry is handled by Redis TTL (CACHE_TTL), so validUntil is informational only.
+    validUntil: undefined,
   };
 
   logger.debug({ did, serviceCount, validUntil: resolved.validUntil ?? 'none' }, 'did:webvh resolved successfully');
