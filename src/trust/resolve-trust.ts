@@ -7,6 +7,7 @@ import type {
   TrustResult,
   CredentialEvaluation,
   FailedCredential,
+  VPDereferenceError,
   EvaluationContext,
 } from './types.js';
 import { createLogger } from '../logger.js';
@@ -44,6 +45,7 @@ export async function resolveTrust(
         error: 'Circular reference detected',
         errorCode: 'CIRCULAR_REFERENCE',
       }],
+      dereferenceErrors: [],
     };
     ctx.trustMemo.set(did, circular);
     return circular;
@@ -71,6 +73,7 @@ export async function resolveTrust(
         error: message ? `${error}: ${message}` : error,
         errorCode: 'DID_RESOLUTION_FAILED',
       }],
+      dereferenceErrors: [],
     };
     ctx.trustMemo.set(did, unresolvedResult);
     return unresolvedResult;
@@ -89,15 +92,13 @@ export async function resolveTrust(
   const credentials: CredentialEvaluation[] = [];
   const failedCredentials: FailedCredential[] = [];
 
-  // Convert VP dereference errors to failed credentials
+  // Record VP dereference errors separately (these are not credential failures)
+  const dereferenceErrors: VPDereferenceError[] = [];
   for (const vpErr of vpErrors) {
-    logger.debug({ did, vpUrl: vpErr.resource, error: vpErr.error }, 'VP dereference error \u2014 added to failed credentials');
-    failedCredentials.push({
-      id: vpErr.resource,
-      uri: vpErr.resource,
-      format: 'UNKNOWN',
+    logger.debug({ did, vpUrl: vpErr.resource, error: vpErr.error }, 'VP dereference error');
+    dereferenceErrors.push({
+      vpUrl: vpErr.resource,
       error: vpErr.error,
-      errorCode: 'VP_DEREFERENCE_FAILED',
     });
   }
 
@@ -164,10 +165,11 @@ export async function resolveTrust(
     expiresAt: computeExpiresAt(ctx.cacheTtlSeconds),
     credentials,
     failedCredentials,
+    dereferenceErrors,
   };
 
   logger.info(
-    { did, trustStatus, production, validCredentials: validCredentials.length, ignoredCredentials: ignoredCredentials.length, failedCredentials: failedCredentials.length, block: ctx.currentBlock },
+    { did, trustStatus, production, validCredentials: validCredentials.length, ignoredCredentials: ignoredCredentials.length, failedCredentials: failedCredentials.length, dereferenceErrors: dereferenceErrors.length, block: ctx.currentBlock },
     'Step 5/5: Trust evaluation complete',
   );
   if (trustStatus === 'UNTRUSTED') {
