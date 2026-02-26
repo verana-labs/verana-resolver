@@ -94,12 +94,20 @@ export async function upsertTrustResult(result: TrustResult): Promise<void> {
     // Delete old credential results for this DID
     await client.query('DELETE FROM credential_results WHERE did = $1', [result.did]);
 
-    // Insert credential results
+    // Insert credential results (ON CONFLICT handles duplicate credentials from duplicate VP endpoints)
     for (const cred of result.credentials) {
       await client.query(
         `INSERT INTO credential_results
            (did, credential_id, result_status, ecs_type, schema_id, issuer_did, presented_by, issued_by, perm_id)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+         ON CONFLICT (did, credential_id) DO UPDATE SET
+           result_status = EXCLUDED.result_status,
+           ecs_type = EXCLUDED.ecs_type,
+           schema_id = EXCLUDED.schema_id,
+           issuer_did = EXCLUDED.issuer_did,
+           presented_by = EXCLUDED.presented_by,
+           issued_by = EXCLUDED.issued_by,
+           perm_id = EXCLUDED.perm_id`,
         [
           result.did,
           cred.id,

@@ -114,7 +114,17 @@ export async function dereferenceAllVPs(
   vps: DereferencedVP[];
   errors: DereferenceError[];
 }> {
-  const endpoints = extractLinkedVPEndpoints(didDocument);
+  const rawEndpoints = extractLinkedVPEndpoints(didDocument);
+  // Deduplicate by serviceEndpoint URL to avoid processing the same VP twice
+  const seen = new Set<string>();
+  const endpoints = rawEndpoints.filter((ep) => {
+    if (seen.has(ep.serviceEndpoint)) return false;
+    seen.add(ep.serviceEndpoint);
+    return true;
+  });
+  if (endpoints.length < rawEndpoints.length) {
+    logger.debug({ raw: rawEndpoints.length, deduped: endpoints.length }, 'Deduplicated LinkedVP endpoints');
+  }
   logger.debug({ endpointCount: endpoints.length, endpoints: endpoints.map((e) => e.serviceEndpoint) }, 'Extracted LinkedVP endpoints from DID document');
 
   const vps: DereferencedVP[] = [];
