@@ -20,6 +20,7 @@ export interface PermissionChainEntry {
 
 export interface CredentialSchemaInfo {
   id: number;
+  trId: string;
   jsonSchema: string;
   ecosystemDid: string;
   ecosystemAka?: string;

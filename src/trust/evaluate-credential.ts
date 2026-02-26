@@ -68,10 +68,10 @@ export async function evaluateCredential(
       logger.info({ vcId: vc.vcId, schemaRef, isVtjsc }, 'Resolving schema reference to on-chain CredentialSchema');
       schema = await resolveVtjscToSchema(schemaRef, indexer, ctx.currentBlock);
       if (schema) {
-        const ecosystemDid = await resolveEcosystemDid(schema.tr_id, indexer, ctx.currentBlock);
-        const ecosystemAka = await resolveEcosystemAka(schema.tr_id, indexer, ctx.currentBlock);
+        const { ecosystemDid, ecosystemAka } = await resolveEcosystemInfo(schema.tr_id, indexer, ctx.currentBlock);
         schemaInfo = {
           id: Number(schema.id),
+          trId: schema.tr_id,
           jsonSchema: schema.json_schema,
           ecosystemDid,
           ecosystemAka,
@@ -200,19 +200,7 @@ export async function evaluateCredential(
         )
       : [];
 
-    // 7. Enrich permission chain entries with trust deposit info
-    for (const entry of permissionChain) {
-      try {
-        const depositResp = await indexer.getTrustDepositByAccount(entry.did, ctx.currentBlock);
-        if (depositResp.trust_deposit) {
-          entry.deposit = depositResp.trust_deposit.amount;
-        }
-      } catch {
-        // Keep permission deposit
-      }
-    }
-
-    // 8. Extract claims from VC
+    // 7. Extract claims from VC
     const claims = extractClaims(vc.vc);
 
     // 9. Determine result: VALID if ECS match + all checks pass, IGNORED if non-ECS
@@ -301,9 +289,23 @@ async function resolveVtjscToSchema(
     return undefined;
   }
 
-  // Search on-chain schemas: list all and find the one whose json_schema content has matching $id
+  // Direct lookup: parse the numeric schema ID from the VPR URI and fetch directly
+  const jsId = parseVprJsonSchemaId(vprUri);
+  if (jsId) {
+    try {
+      logger.debug({ schemaRef, vprUri, jsId }, 'Fetching on-chain schema by ID (direct get)');
+      const resp = await indexer.getCredentialSchema(jsId, atBlock);
+      logger.debug({ schemaRef, vprUri, onChainSchemaId: resp.schema.id, trId: resp.schema.tr_id }, 'On-chain schema fetched by ID');
+      return resp.schema;
+    } catch (err) {
+      logger.debug({ schemaRef, vprUri, jsId, error: err instanceof Error ? err.message : String(err) }, 'getCredentialSchema failed');
+      return undefined;
+    }
+  }
+
+  // Fallback: VPR URI doesn't match expected pattern — list all and search by $id
   try {
-    logger.debug({ schemaRef, vprUri }, 'Searching on-chain schemas by VPR URI ($id match)');
+    logger.debug({ schemaRef, vprUri }, 'VPR URI not parseable — falling back to listCredentialSchemas');
     const resp = await indexer.listCredentialSchemas({}, atBlock);
     for (const schema of resp.schemas) {
       try {
@@ -324,29 +326,19 @@ async function resolveVtjscToSchema(
   }
 }
 
-async function resolveEcosystemDid(
+async function resolveEcosystemInfo(
   trId: string,
   indexer: IndexerClient,
   atBlock?: number,
-): Promise<string> {
+): Promise<{ ecosystemDid: string; ecosystemAka: string | undefined }> {
   try {
     const resp = await indexer.getTrustRegistry(trId, atBlock);
-    return resp.trust_registry.did;
+    return {
+      ecosystemDid: resp.trust_registry.did,
+      ecosystemAka: resp.trust_registry.aka ?? undefined,
+    };
   } catch {
-    return '';
-  }
-}
-
-async function resolveEcosystemAka(
-  trId: string,
-  indexer: IndexerClient,
-  atBlock?: number,
-): Promise<string | undefined> {
-  try {
-    const resp = await indexer.getTrustRegistry(trId, atBlock);
-    return resp.trust_registry.aka ?? undefined;
-  } catch {
-    return undefined;
+    return { ecosystemDid: '', ecosystemAka: undefined };
   }
 }
 
