@@ -38,6 +38,12 @@ const envSchema = z.object({
   // Verification
   DISABLE_DIGEST_SRI_VERIFICATION: booleanFromEnv.default(false),
 
+  // ECS schema digests (spec [ECS-TR] reference values)
+  ECS_DIGEST_SERVICE: z.string().default('sha384-PVseqJJjEGMVRcht77rE2yLqRnCiLBRLOklSuAshSEXK3eyITmUpDBhpQryJ/XIx'),
+  ECS_DIGEST_ORG: z.string().default('sha384-XF10SsOaav+i+hBaXP29coZWZeaCZocFvfP9ZeHh9B7++q7YGA2QLTbFZqtYs/zA'),
+  ECS_DIGEST_PERSONA: z.string().default('sha384-4vkQl6Ro6fudr+g5LL2NQJWVxaSTaYkyf0yVPVUmzA2leNNn0sJIsM07NlOAG/2I'),
+  ECS_DIGEST_UA: z.string().default('sha384-yLRK2mCokVjRlGX0nVzdEYQ1o6YWpQqgdg6+HlSxCePP+D7wvs0+70TJACLZfbF/'),
+
   // Server
   PORT: z.coerce.number().int().positive().default(3000),
   LOG_LEVEL: LogLevel.default('info'),

@@ -1,5 +1,6 @@
 import type { IndexerClient } from '../indexer/client.js';
 import type { CredentialEvaluation, EvaluationContext, TrustResult, TrustStatus } from './types.js';
+import { verifyEcsTrCompleteness } from './ecs-schema.js';
 import { createLogger } from '../logger.js';
 
 const logger = createLogger('vs-requirements');
@@ -54,6 +55,27 @@ export async function evaluateVSRequirements(
     const ecsTypes = creds.map((c) => c.ecsType);
     logger.debug({ did, ecosystemDid, credCount: creds.length, ecsTypes }, 'Checking ecosystem');
 
+    // [ECS-TR] Verify the ecosystem's TR provides all 4 ECS schemas
+    const trId = creds[0]?.schema?.id !== undefined
+      ? await findTrIdForEcosystem(ecosystemDid, creds, indexer, ctx.currentBlock)
+      : undefined;
+    if (trId) {
+      try {
+        const schemasResp = await indexer.listCredentialSchemas({ tr_id: trId }, ctx.currentBlock);
+        const completeness = await verifyEcsTrCompleteness(schemasResp.schemas);
+        if (!completeness.complete) {
+          logger.warn(
+            { did, ecosystemDid, trId, missing: completeness.missingTypes, found: [...completeness.foundTypes] },
+            'ECS TR incomplete \u2014 ecosystem does not provide all 4 ECS schemas',
+          );
+          continue;
+        }
+        logger.debug({ did, ecosystemDid, trId, ecsTypesInTr: [...completeness.foundTypes] }, 'ECS TR completeness verified OK');
+      } catch (err) {
+        logger.warn({ did, ecosystemDid, trId, error: err instanceof Error ? err.message : String(err) }, 'Failed to verify ECS TR completeness');
+      }
+    }
+
     const serviceCred = creds.find((c) => c.ecsType === 'ECS-SERVICE');
     if (!serviceCred) {
       logger.debug({ did, ecosystemDid }, 'VS-REQ-2: no ECS-SERVICE credential \u2014 ecosystem not satisfied');
@@ -92,4 +114,39 @@ export async function evaluateVSRequirements(
 
   logger.debug({ did, satisfiedEcosystems, totalEcosystems, status }, 'VS requirements evaluation complete');
   return status;
+}
+
+/**
+ * Find the trust registry ID for an ecosystem DID by looking at the
+ * credential schemas' underlying CredentialSchema entries.
+ * The schema info on each credential carries the numeric schema ID;
+ * we need the tr_id which comes from the on-chain CredentialSchema.
+ */
+async function findTrIdForEcosystem(
+  ecosystemDid: string,
+  creds: CredentialEvaluation[],
+  indexer: IndexerClient,
+  atBlock?: number,
+): Promise<string | undefined> {
+  // Try to get the tr_id from the first credential that has a schema
+  for (const cred of creds) {
+    if (cred.schema?.id) {
+      try {
+        const resp = await indexer.getCredentialSchema(String(cred.schema.id), atBlock);
+        return resp.schema.tr_id;
+      } catch {
+        // try next credential
+      }
+    }
+  }
+  // Fallback: search trust registries by ecosystem DID
+  try {
+    const resp = await indexer.listTrustRegistries({ controller: ecosystemDid }, atBlock);
+    if (resp.trust_registries.length > 0) {
+      return resp.trust_registries[0].id;
+    }
+  } catch {
+    // not found
+  }
+  return undefined;
 }

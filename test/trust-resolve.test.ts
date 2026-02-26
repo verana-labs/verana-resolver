@@ -1,42 +1,8 @@
 import { describe, it, expect, vi } from 'vitest';
-import { classifyEcsType } from '../src/trust/evaluate-credential.js';
 import { evaluateVSRequirements } from '../src/trust/vs-requirements.js';
 import { createEvaluationContext } from '../src/trust/resolve-trust.js';
 import type { CredentialEvaluation, TrustResult, EvaluationContext } from '../src/trust/types.js';
 import type { IndexerClient } from '../src/indexer/client.js';
-
-// --- classifyEcsType ---
-
-describe('classifyEcsType', () => {
-  it('returns ECS-SERVICE for service schema URI', () => {
-    expect(classifyEcsType('https://example.com/schemas/ecs-service/v1')).toBe('ECS-SERVICE');
-  });
-
-  it('returns ECS-ORG for org schema URI', () => {
-    expect(classifyEcsType('https://example.com/schemas/ecs-org/v1')).toBe('ECS-ORG');
-  });
-
-  it('returns ECS-PERSONA for persona schema URI', () => {
-    expect(classifyEcsType('https://example.com/schemas/ecs-persona/v1')).toBe('ECS-PERSONA');
-  });
-
-  it('returns ECS-UA for ua schema URI', () => {
-    expect(classifyEcsType('https://example.com/schemas/ecs-ua/v1')).toBe('ECS-UA');
-  });
-
-  it('returns null for non-ECS schema URI', () => {
-    expect(classifyEcsType('https://example.com/schemas/fintech-license/v1')).toBeNull();
-  });
-
-  it('returns null for undefined', () => {
-    expect(classifyEcsType(undefined)).toBeNull();
-  });
-
-  it('is case-insensitive', () => {
-    expect(classifyEcsType('https://example.com/schemas/ECS-Service/v1')).toBe('ECS-SERVICE');
-    expect(classifyEcsType('https://example.com/schemas/ECS-ORG/v1')).toBe('ECS-ORG');
-  });
-});
 
 // --- createEvaluationContext ---
 
@@ -313,7 +279,7 @@ describe('evaluateVSRequirements', () => {
       },
     });
 
-    // eco2 is NOT in allowlist, so only eco1 is evaluated → TRUSTED (not PARTIAL)
+    // eco2 is NOT in allowlist, so only eco1 is evaluated \u2192 TRUSTED (not PARTIAL)
     const result = await evaluateVSRequirements(
       did,
       [serviceCred1, orgCred1, serviceCred2],

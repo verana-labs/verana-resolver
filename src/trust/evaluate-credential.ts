@@ -7,21 +7,14 @@ import { buildPermissionChain } from './permission-chain.js';
 import type {
   CredentialEvaluation,
   CredentialSchemaInfo,
-  EcsType,
   EvaluationContext,
   FailedCredential,
 } from './types.js';
+import { classifyEcsTypeByDigest } from './ecs-schema.js';
 import { createLogger } from '../logger.js';
 import { getConfig } from '../config/index.js';
 
 const logger = createLogger('evaluate-credential');
-
-const ECS_TYPE_PATTERNS: Array<{ pattern: RegExp; ecsType: EcsType }> = [
-  { pattern: /ecs-service/i, ecsType: 'ECS-SERVICE' },
-  { pattern: /ecs-org/i, ecsType: 'ECS-ORG' },
-  { pattern: /ecs-persona/i, ecsType: 'ECS-PERSONA' },
-  { pattern: /ecs-ua/i, ecsType: 'ECS-UA' },
-];
 
 export async function evaluateCredential(
   vc: DereferencedVC,
@@ -126,9 +119,9 @@ export async function evaluateCredential(
       }
     }
 
-    // 3. Determine ECS type from schema reference
-    const ecsType = classifyEcsType(schemaRef);
-    logger.debug({ vcId: vc.vcId, ecsType: ecsType ?? 'none' }, 'ECS type classified');
+    // 3. Determine ECS type by computing JCS digest of the JSON schema (spec [ECS-TR])
+    const ecsType = schema ? await classifyEcsTypeByDigest(schema.json_schema) : null;
+    logger.debug({ vcId: vc.vcId, ecsType: ecsType ?? 'none', schemaId: schema?.id ?? 'none' }, 'ECS type classified by digest');
 
     // 4. Determine effective issuance time
     let effectiveIssuanceTime: string | undefined;
@@ -376,13 +369,6 @@ async function findIssuerPermission(
   }
 }
 
-export function classifyEcsType(vtjscId?: string): EcsType {
-  if (!vtjscId) return null;
-  for (const { pattern, ecsType } of ECS_TYPE_PATTERNS) {
-    if (pattern.test(vtjscId)) return ecsType;
-  }
-  return null;
-}
 
 function extractClaims(vc: Record<string, unknown>): Record<string, unknown> {
   const subject = vc.credentialSubject;
