@@ -56,6 +56,7 @@ vi.mock('../src/trust/resolve-trust.js', () => ({
     expiresAt: new Date(Date.now() + 3600000).toISOString(),
     credentials: [],
     failedCredentials: [],
+    dereferenceErrors: [],
   }),
   createEvaluationContext: vi.fn().mockReturnValue({
     visitedDids: new Set(),

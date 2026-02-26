@@ -11,6 +11,7 @@ export type {
   CredentialEvaluation,
   CredentialResultStatus,
   FailedCredential,
+  VPDereferenceError,
   PermissionChainEntry,
   PermissionType,
   EcsType,

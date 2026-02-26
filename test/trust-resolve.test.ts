@@ -51,6 +51,7 @@ function makeTrustResult(did: string, creds: CredentialEvaluation[]): TrustResul
     expiresAt: new Date(Date.now() + 3600000).toISOString(),
     credentials: creds,
     failedCredentials: [],
+    dereferenceErrors: [],
   };
 }
 

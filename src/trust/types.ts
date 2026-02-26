@@ -54,6 +54,11 @@ export interface FailedCredential {
   errorCode: string;
 }
 
+export interface VPDereferenceError {
+  vpUrl: string;
+  error: string;
+}
+
 export interface TrustResult {
   did: string;
   trustStatus: TrustStatus;
@@ -63,6 +68,7 @@ export interface TrustResult {
   expiresAt: string;
   credentials: CredentialEvaluation[];
   failedCredentials: FailedCredential[];
+  dereferenceErrors: VPDereferenceError[];
 }
 
 export interface EvaluationContext {

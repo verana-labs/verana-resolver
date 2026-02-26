@@ -25,7 +25,7 @@ beforeEach(() => {
 
 // --- Parameter validation ---
 
-describe('Q1 /v1/trust/resolve — parameter validation', () => {
+describe('Q1 /v1/trust/resolve \u2014 parameter validation', () => {
   it('returns 400 when did is missing', async () => {
     const app = await buildApp();
     const res = await app.inject({ method: 'GET', url: '/v1/trust/resolve' });
@@ -52,7 +52,7 @@ describe('Q1 /v1/trust/resolve — parameter validation', () => {
 
 // --- Summary mode ---
 
-describe('Q1 /v1/trust/resolve — summary mode', () => {
+describe('Q1 /v1/trust/resolve \u2014 summary mode', () => {
   it('returns 404 when DID not found', async () => {
     mockGetSummary.mockResolvedValue(null);
     const app = await buildApp();
@@ -134,7 +134,7 @@ describe('Q1 /v1/trust/resolve — summary mode', () => {
 
 // --- Full mode ---
 
-describe('Q1 /v1/trust/resolve — full mode', () => {
+describe('Q1 /v1/trust/resolve \u2014 full mode', () => {
   it('returns 404 when DID not found in full mode', async () => {
     mockGetFull.mockResolvedValue(null);
     const app = await buildApp();
@@ -176,6 +176,7 @@ describe('Q1 /v1/trust/resolve — full mode', () => {
         },
       ],
       failedCredentials: [],
+      dereferenceErrors: [],
     });
 
     const app = await buildApp();
@@ -204,6 +205,7 @@ describe('Q1 /v1/trust/resolve — full mode', () => {
       expiresAt: '2026-02-14T10:00:00.000Z',
       credentials: [],
       failedCredentials: [],
+      dereferenceErrors: [],
     });
 
     const app = await buildApp();
