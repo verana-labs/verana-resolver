@@ -1,0 +1,154 @@
+diff --git a/node_modules/@verana-labs/verre/build/index.js b/node_modules/@verana-labs/verre/build/index.js
+index 9a6c4d5..988dee3 100644
+--- a/node_modules/@verana-labs/verre/build/index.js
++++ b/node_modules/@verana-labs/verre/build/index.js
+@@ -1,4 +1,4 @@
+-export * from './resolver';
+-export * from './utils';
+-export * from './types';
++export * from './resolver/index.js';
++export * from './utils/index.js';
++export * from './types.js';
+ //# sourceMappingURL=index.js.map
+\ No newline at end of file
+diff --git a/node_modules/@verana-labs/verre/build/libraries/documentLoader.js b/node_modules/@verana-labs/verre/build/libraries/documentLoader.js
+index 8c01966..4fdd71a 100644
+--- a/node_modules/@verana-labs/verre/build/libraries/documentLoader.js
++++ b/node_modules/@verana-labs/verre/build/libraries/documentLoader.js
+@@ -1,7 +1,7 @@
+ import jsonld from '@digitalcredentials/jsonld';
+-import { DEFAULT_CONTEXTS } from './defaultContexts';
+-import { resolverInstance } from './did-resolver';
+-import { getNativeDocumentLoader } from './nativeDocumentLoader';
++import { DEFAULT_CONTEXTS } from './defaultContexts.js';
++import { resolverInstance } from './did-resolver.js';
++import { getNativeDocumentLoader } from './nativeDocumentLoader.js';
+ export function createDocumentLoader(customResolver) {
+     const didResolver = customResolver || resolverInstance;
+     async function loader(url) {
+diff --git a/node_modules/@verana-labs/verre/build/libraries/index.js b/node_modules/@verana-labs/verre/build/libraries/index.js
+index 4fce033..ee1313e 100644
+--- a/node_modules/@verana-labs/verre/build/libraries/index.js
++++ b/node_modules/@verana-labs/verre/build/libraries/index.js
+@@ -1,4 +1,4 @@
+-export * from './did-resolver';
+-export * from './documentLoader';
+-export * from './defaultContexts';
++export * from './did-resolver.js';
++export * from './documentLoader.js';
++export * from './defaultContexts.js';
+ //# sourceMappingURL=index.js.map
+\ No newline at end of file
+diff --git a/node_modules/@verana-labs/verre/build/resolver/didValidator.js b/node_modules/@verana-labs/verre/build/resolver/didValidator.js
+index 0010d21..4a94436 100644
+--- a/node_modules/@verana-labs/verre/build/resolver/didValidator.js
++++ b/node_modules/@verana-labs/verre/build/resolver/didValidator.js
+@@ -1,6 +1,6 @@
+-import { resolverInstance } from '../libraries';
+-import { ECS, TrustErrorCode, TrustResolutionOutcome, PermissionType, LogLevel, } from '../types';
+-import { buildMetadata, fetchJson, fetchText, handleTrustError, identifySchema, TrustError, validateSchemaContent, verifyDigestSRI, verifySignature, VerreLogger, } from '../utils';
++import { resolverInstance } from '../libraries/index.js';
++import { ECS, TrustErrorCode, TrustResolutionOutcome, PermissionType, LogLevel, } from '../types.js';
++import { buildMetadata, fetchJson, fetchText, handleTrustError, identifySchema, TrustError, validateSchemaContent, verifyDigestSRI, verifySignature, VerreLogger, } from '../utils/index.js';
+ /**
+  * Resolves a Decentralized Identifier (DID) and performs trust validation.
+  *
+diff --git a/node_modules/@verana-labs/verre/build/resolver/index.js b/node_modules/@verana-labs/verre/build/resolver/index.js
+index e5b3269..46c9b9e 100644
+--- a/node_modules/@verana-labs/verre/build/resolver/index.js
++++ b/node_modules/@verana-labs/verre/build/resolver/index.js
+@@ -1,2 +1,2 @@
+-export { resolveDID, resolveCredential, verifyPermissions } from './didValidator';
++export { resolveDID, resolveCredential, verifyPermissions } from './didValidator.js';
+ //# sourceMappingURL=index.js.map
+\ No newline at end of file
+diff --git a/node_modules/@verana-labs/verre/build/utils/helper.js b/node_modules/@verana-labs/verre/build/utils/helper.js
+index 9d35dba..a0254c0 100644
+--- a/node_modules/@verana-labs/verre/build/utils/helper.js
++++ b/node_modules/@verana-labs/verre/build/utils/helper.js
+@@ -1,5 +1,5 @@
+-import { TrustErrorCode } from '../types';
+-import { TrustError } from './trustError';
++import { TrustErrorCode } from '../types.js';
++import { TrustError } from './trustError.js';
+ /**
+  * Builds metadata for a trust resolution process.
+  *
+diff --git a/node_modules/@verana-labs/verre/build/utils/index.js b/node_modules/@verana-labs/verre/build/utils/index.js
+index d37028b..cc39fe8 100644
+--- a/node_modules/@verana-labs/verre/build/utils/index.js
++++ b/node_modules/@verana-labs/verre/build/utils/index.js
+@@ -1,7 +1,7 @@
+-export * from './data';
+-export * from './helper';
+-export * from './verifier';
+-export * from './trustError';
+-export * from './validateSchema';
+-export * from './logger';
++export * from './data.js';
++export * from './helper.js';
++export * from './verifier.js';
++export * from './trustError.js';
++export * from './validateSchema.js';
++export * from './logger.js';
+ //# sourceMappingURL=index.js.map
+\ No newline at end of file
+diff --git a/node_modules/@verana-labs/verre/build/utils/logger.js b/node_modules/@verana-labs/verre/build/utils/logger.js
+index c32c2a9..79997a7 100644
+--- a/node_modules/@verana-labs/verre/build/utils/logger.js
++++ b/node_modules/@verana-labs/verre/build/utils/logger.js
+@@ -1,5 +1,5 @@
+ import { Logger } from 'tslog';
+-import { LogLevel } from '../types';
++import { LogLevel } from '../types.js';
+ export class VerreLogger {
+     constructor(level = LogLevel.NONE, context) {
+         this.logger = new Logger({
+diff --git a/node_modules/@verana-labs/verre/build/utils/trustError.js b/node_modules/@verana-labs/verre/build/utils/trustError.js
+index 4665477..dfa7fb5 100644
+--- a/node_modules/@verana-labs/verre/build/utils/trustError.js
++++ b/node_modules/@verana-labs/verre/build/utils/trustError.js
+@@ -1,5 +1,5 @@
+-import { TrustErrorCode, TrustResolutionOutcome } from '../types';
+-import { buildMetadata } from './helper';
++import { TrustErrorCode, TrustResolutionOutcome } from '../types.js';
++import { buildMetadata } from './helper.js';
+ /**
+  * Custom error class for handling trust-related errors.
+  * Extends the standard `Error` class and includes metadata for detailed resolution information.
+diff --git a/node_modules/@verana-labs/verre/build/utils/validateSchema.js b/node_modules/@verana-labs/verre/build/utils/validateSchema.js
+index d43bf45..817c492 100644
+--- a/node_modules/@verana-labs/verre/build/utils/validateSchema.js
++++ b/node_modules/@verana-labs/verre/build/utils/validateSchema.js
+@@ -1,8 +1,8 @@
+-import Ajv from 'ajv/dist/2020';
++import Ajv from 'ajv/dist/2020.js';
+ import addFormats from 'ajv-formats';
+-import { ECS, TrustErrorCode } from '../types';
+-import { essentialSchemas } from './data';
+-import { TrustError } from './trustError';
++import { ECS, TrustErrorCode } from '../types.js';
++import { essentialSchemas } from './data.js';
++import { TrustError } from './trustError.js';
+ /**
+  * Loads a predefined essential schema by name.
+  *
+diff --git a/node_modules/@verana-labs/verre/build/utils/verifier.js b/node_modules/@verana-labs/verre/build/utils/verifier.js
+index d15a3bd..7bc27e9 100644
+--- a/node_modules/@verana-labs/verre/build/utils/verifier.js
++++ b/node_modules/@verana-labs/verre/build/utils/verifier.js
+@@ -2,10 +2,10 @@ import jsonld from '@digitalcredentials/jsonld';
+ import { ed25519 } from '@noble/curves/ed25519.js';
+ import { bytesToHex, concatBytes } from '@noble/hashes/utils';
+ import { base58, base64, base64url } from '@scure/base';
+-import { createDocumentLoader } from '../libraries';
+-import { TrustErrorCode } from '../types';
+-import { hash } from './crypto';
+-import { TrustError } from './trustError';
++import { createDocumentLoader } from '../libraries/index.js';
++import { TrustErrorCode } from '../types.js';
++import { hash } from './crypto.js';
++import { TrustError } from './trustError.js';
+ // Ed25519 multicodec prefix: 0xed01
+ const ED25519_MULTICODEC_PREFIX = new Uint8Array([0xed, 0x01]);
+ const createMessageDigest = () => ({

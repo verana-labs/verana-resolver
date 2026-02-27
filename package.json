@@ -10,6 +10,7 @@
   "scripts": {
     "build": "tsc",
     "start": "node dist/index.js",
+    "postinstall": "patch-package",
     "dev": "tsx watch src/index.ts",
     "lint": "eslint 'src/**/*.ts' 'test/**/*.ts'",
     "lint:fix": "eslint 'src/**/*.ts' 'test/**/*.ts' --fix",
@@ -45,6 +46,7 @@
     "@typescript-eslint/eslint-plugin": "^8.22.0",
     "@typescript-eslint/parser": "^8.22.0",
     "eslint": "^9.19.0",
+    "patch-package": "^8.0.1",
     "prettier": "^3.4.2",
     "tsx": "^4.19.2",
     "typescript": "^5.7.3",
