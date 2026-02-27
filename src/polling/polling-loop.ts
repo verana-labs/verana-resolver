@@ -183,15 +183,22 @@ async function refreshExpiredEvaluations(
   allowedEcosystemDids: Set<string>,
 ): Promise<void> {
   const pool = getPool();
+  const refreshWindowSeconds = Math.floor(config.TRUST_TTL * config.TRUST_TTL_REFRESH_RATIO);
   const result = await pool.query<{ did: string }>(
-    'SELECT did FROM trust_results WHERE expires_at <= NOW() ORDER BY expires_at ASC LIMIT 100',
+    `SELECT did FROM trust_results
+     WHERE expires_at <= NOW() + $1 * INTERVAL '1 second'
+     ORDER BY expires_at ASC LIMIT 100`,
+    [refreshWindowSeconds],
   );
 
   if (result.rows.length === 0) return;
 
-  const expiredDids = new Set(result.rows.map((r) => r.did));
-  logger.info({ count: expiredDids.size }, 'Refreshing expired trust evaluations');
+  const refreshDids = new Set(result.rows.map((r) => r.did));
+  logger.info(
+    { count: refreshDids.size, refreshWindowSeconds },
+    'Refreshing trust evaluations approaching expiration',
+  );
 
-  await runPass1(expiredDids, indexer);
-  await runPass2(expiredDids, indexer, currentBlock, config.TRUST_TTL, allowedEcosystemDids);
+  await runPass1(refreshDids, indexer);
+  await runPass2(refreshDids, indexer, currentBlock, config.TRUST_TTL, allowedEcosystemDids);
 }
