@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.3.0](https://github.com/verana-labs/verana-resolver/compare/v0.2.0...v0.3.0) (2026-02-27)
+
+
+### Features
+
+* add TRUST_TTL_REFRESH_RATIO to trigger re-evaluation before expiration ([#122](https://github.com/verana-labs/verana-resolver/issues/122)) ([e50d5dd](https://github.com/verana-labs/verana-resolver/commit/e50d5ddd629667c967b3e72a02ffa64327acfb4b))
+* implement ECS schema digest verification using JCS canonicalization ([#116](https://github.com/verana-labs/verana-resolver/issues/116)) ([8790325](https://github.com/verana-labs/verana-resolver/commit/8790325bdbc494bedc3a8b3d9a028632487a1c57))
+
+
+### Bug Fixes
+
+* deduplicate VP endpoints and handle duplicate credential inserts ([#117](https://github.com/verana-labs/verana-resolver/issues/117)) ([9d6f3f2](https://github.com/verana-labs/verana-resolver/commit/9d6f3f241f19cc1aecca03e38708f09a65a4d96f))
+* remove validUntil cache expiry check causing infinite DID re-resolution ([#120](https://github.com/verana-labs/verana-resolver/issues/120)) ([2153e7f](https://github.com/verana-labs/verana-resolver/commit/2153e7f79d086513133618dae7285c1c36c44a69))
+* separate VP dereference errors from failedCredentials ([#119](https://github.com/verana-labs/verana-resolver/issues/119)) ([52564d2](https://github.com/verana-labs/verana-resolver/commit/52564d279b1ce617f3ba08acb8c88563ce3d5512))
+
+
+### Performance Improvements
+
+* optimize Indexer API calls in credential evaluation ([#121](https://github.com/verana-labs/verana-resolver/issues/121)) ([d69c7ad](https://github.com/verana-labs/verana-resolver/commit/d69c7ad59b915a1f417ec3570478f8dd7414d8b7))
+
 ## [0.2.0](https://github.com/verana-labs/verana-resolver/compare/v0.1.0...v0.2.0) (2026-02-15)
 
 
