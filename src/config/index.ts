@@ -39,6 +39,10 @@ const envSchema = z.object({
   // Verification
   DISABLE_DIGEST_SRI_VERIFICATION: booleanFromEnv.default(false),
 
+  // Verre — Verifiable Public Registries (JSON array)
+  // Each entry: { "id": "vpr:verana:vna-testnet-1", "baseUrls": ["https://idx.example.com/vpr"], "production": true }
+  VPR_REGISTRIES: z.string().default('[]'),
+
   // ECS schema digests (spec [ECS-TR] reference values)
   ECS_DIGEST_SERVICE: z.string().default('sha384-PVseqJJjEGMVRcht77rE2yLqRnCiLBRLOklSuAshSEXK3eyITmUpDBhpQryJ/XIx'),
   ECS_DIGEST_ORG: z.string().default('sha384-XF10SsOaav+i+hBaXP29coZWZeaCZocFvfP9ZeHh9B7++q7YGA2QLTbFZqtYs/zA'),
