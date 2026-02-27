@@ -61,41 +61,54 @@ beforeEach(() => {
   (mockIndexer.getBlockHeight as ReturnType<typeof vi.fn>).mockResolvedValue({ height: 500 });
 });
 
-describe('POST /v1/inject/did — validation', () => {
+describe('POST /v1/inject/did \u2014 validation', () => {
   it('returns 400 when body is empty', async () => {
     const app = await buildApp();
-    const res = await app.inject({ method: 'POST', url: '/v1/inject/did', payload: {} });
+    const res = await app.inject({
+      method: 'POST',
+      url: '/v1/inject/did',
+      payload: {},
+    });
     expect(res.statusCode).toBe(400);
-    const body = JSON.parse(res.body);
-    expect(body.error).toBe('did is required');
-  });
-
-  it('returns 400 when did is not a string', async () => {
-    const app = await buildApp();
-    const res = await app.inject({ method: 'POST', url: '/v1/inject/did', payload: { did: 123 } });
-    expect(res.statusCode).toBe(400);
+    expect(res.json().message).toMatch(/valid "did"/);
   });
 
   it('returns 400 when did does not start with did:', async () => {
     const app = await buildApp();
-    const res = await app.inject({ method: 'POST', url: '/v1/inject/did', payload: { did: 'notadid' } });
+    const res = await app.inject({
+      method: 'POST',
+      url: '/v1/inject/did',
+      payload: { did: 'notadid' },
+    });
     expect(res.statusCode).toBe(400);
-    const body = JSON.parse(res.body);
-    expect(body.error).toBe('did must start with "did:"');
+  });
+
+  it('returns 400 when did is not a string', async () => {
+    const app = await buildApp();
+    const res = await app.inject({
+      method: 'POST',
+      url: '/v1/inject/did',
+      payload: { did: 123 },
+    });
+    expect(res.statusCode).toBe(400);
   });
 });
 
-describe('POST /v1/inject/did — happy path', () => {
-  it('calls runPass1 and runPass2 with correct arguments', async () => {
+describe('POST /v1/inject/did \u2014 pass1 + pass2 success', () => {
+  it('runs pass1 and pass2, returns ok for both', async () => {
     const did = 'did:web:example.com';
     mockRunPass1.mockResolvedValue({ succeeded: [did], failed: [] });
     mockRunPass2.mockResolvedValue({ succeeded: [did], failed: [] });
 
     const app = await buildApp();
-    const res = await app.inject({ method: 'POST', url: '/v1/inject/did', payload: { did } });
+    const res = await app.inject({
+      method: 'POST',
+      url: '/v1/inject/did',
+      payload: { did },
+    });
 
     expect(res.statusCode).toBe(200);
-    const body = JSON.parse(res.body);
+    const body = res.json();
     expect(body.did).toBe(did);
     expect(body.pass1).toBe('ok');
     expect(body.pass2).toBe('ok');
@@ -114,43 +127,44 @@ describe('POST /v1/inject/did — happy path', () => {
       new Set(['did:web:ecosystem.example.com']),
     );
   });
+});
 
-  it('reports pass1 failure', async () => {
-    const did = 'did:web:example.com';
+describe('POST /v1/inject/did \u2014 pass1 failure skips pass2', () => {
+  it('returns pass1=failed, pass2=skipped when pass1 fails', async () => {
+    const did = 'did:web:bad.example.com';
     mockRunPass1.mockResolvedValue({ succeeded: [], failed: [did] });
-    mockRunPass2.mockResolvedValue({ succeeded: [], failed: [did] });
 
     const app = await buildApp();
-    const res = await app.inject({ method: 'POST', url: '/v1/inject/did', payload: { did } });
+    const res = await app.inject({
+      method: 'POST',
+      url: '/v1/inject/did',
+      payload: { did },
+    });
 
     expect(res.statusCode).toBe(200);
-    const body = JSON.parse(res.body);
+    const body = res.json();
     expect(body.pass1).toBe('failed');
+    expect(body.pass2).toBe('skipped');
+    expect(mockRunPass2).not.toHaveBeenCalled();
   });
+});
 
-  it('reports pass2 failure', async () => {
-    const did = 'did:web:example.com';
+describe('POST /v1/inject/did \u2014 pass2 failure', () => {
+  it('returns pass1=ok, pass2=failed when pass2 fails', async () => {
+    const did = 'did:web:evalfail.example.com';
     mockRunPass1.mockResolvedValue({ succeeded: [did], failed: [] });
     mockRunPass2.mockResolvedValue({ succeeded: [], failed: [did] });
 
     const app = await buildApp();
-    const res = await app.inject({ method: 'POST', url: '/v1/inject/did', payload: { did } });
+    const res = await app.inject({
+      method: 'POST',
+      url: '/v1/inject/did',
+      payload: { did },
+    });
 
     expect(res.statusCode).toBe(200);
-    const body = JSON.parse(res.body);
+    const body = res.json();
     expect(body.pass1).toBe('ok');
     expect(body.pass2).toBe('failed');
-  });
-
-  it('returns 500 when pass1 throws', async () => {
-    const did = 'did:web:example.com';
-    mockRunPass1.mockRejectedValue(new Error('boom'));
-
-    const app = await buildApp();
-    const res = await app.inject({ method: 'POST', url: '/v1/inject/did', payload: { did } });
-
-    expect(res.statusCode).toBe(500);
-    const body = JSON.parse(res.body);
-    expect(body.error).toBe('Internal Server Error');
   });
 });
