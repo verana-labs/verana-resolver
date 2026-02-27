@@ -76,11 +76,20 @@ export async function pollOnce(
 
   // 2. Process blocks sequentially
   let lastBlock = await getLastProcessedBlock();
+  let lastRefreshAt = Date.now();
+  const REFRESH_INTERVAL_MS = config.POLL_INTERVAL * 1000;
 
   while (lastBlock < indexerHeight) {
     const target = lastBlock + 1;
 
     try {
+      // Periodically run TTL refresh during block catch-up
+      const elapsed = Date.now() - lastRefreshAt;
+      if (elapsed >= REFRESH_INTERVAL_MS) {
+        await refreshExpiredEvaluations(indexer, lastBlock, config, allowedEcosystemDids);
+        lastRefreshAt = Date.now();
+      }
+
       // Fetch changes for this block
       const changes = await indexer.listChanges(target);
       const activity = changes.activity;
@@ -124,7 +133,7 @@ export async function pollOnce(
     }
   }
 
-  // 3. TTL-driven refresh (runs regardless of block processing errors)
+  // 3. TTL-driven refresh (always runs after block loop completes)
   await refreshExpiredEvaluations(indexer, lastBlock, config, allowedEcosystemDids);
 
   // 4. Cleanup permanently failed retries \u2192 mark UNTRUSTED
