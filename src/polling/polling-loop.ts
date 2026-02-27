@@ -80,46 +80,51 @@ export async function pollOnce(
   while (lastBlock < indexerHeight) {
     const target = lastBlock + 1;
 
-    // Fetch changes for this block
-    const changes = await indexer.listChanges(target);
-    const activity = changes.activity;
-    const affectedDids = extractAffectedDids(activity);
+    try {
+      // Fetch changes for this block
+      const changes = await indexer.listChanges(target);
+      const activity = changes.activity;
+      const affectedDids = extractAffectedDids(activity);
 
-    // Summarise activity per entity_type, e.g. { trust_registry: 2, credential_schema: 1 }
-    const typeCounts: Record<string, number> = {};
-    for (const item of activity) {
-      typeCounts[item.entity_type] = (typeCounts[item.entity_type] ?? 0) + 1;
+      // Summarise activity per entity_type, e.g. { trust_registry: 2, credential_schema: 1 }
+      const typeCounts: Record<string, number> = {};
+      for (const item of activity) {
+        typeCounts[item.entity_type] = (typeCounts[item.entity_type] ?? 0) + 1;
+      }
+
+      logger.info(
+        { block: target, activityCount: activity.length, types: typeCounts, dids: affectedDids.size },
+        'Processed block',
+      );
+
+      if (affectedDids.size > 0) {
+
+        // Pass1: dereference affected DIDs
+        await runPass1(affectedDids, indexer, target, config.TRUST_TTL);
+
+        // Retry eligible Pass1 failures
+        await retryEligiblePass1(indexer, target, config);
+
+        // Pass2: re-evaluate trust
+        await runPass2(affectedDids, indexer, target, config.TRUST_TTL, allowedEcosystemDids);
+
+        // Retry eligible Pass2 failures
+        await retryEligiblePass2(indexer, target, config, allowedEcosystemDids);
+
+        didsAffected += affectedDids.size;
+      }
+
+      // Atomically update lastProcessedBlock
+      await setLastProcessedBlock(target);
+      lastBlock = target;
+      blocksProcessed++;
+    } catch (err) {
+      logger.error({ block: target, err }, 'Block processing failed \u2014 skipping to TTL refresh');
+      break;
     }
-
-    logger.info(
-      { block: target, activityCount: activity.length, types: typeCounts, dids: affectedDids.size },
-      'Processed block',
-    );
-
-    if (affectedDids.size > 0) {
-
-      // Pass1: dereference affected DIDs
-      await runPass1(affectedDids, indexer, target, config.TRUST_TTL);
-
-      // Retry eligible Pass1 failures
-      await retryEligiblePass1(indexer, target, config);
-
-      // Pass2: re-evaluate trust
-      await runPass2(affectedDids, indexer, target, config.TRUST_TTL, allowedEcosystemDids);
-
-      // Retry eligible Pass2 failures
-      await retryEligiblePass2(indexer, target, config, allowedEcosystemDids);
-
-      didsAffected += affectedDids.size;
-    }
-
-    // Atomically update lastProcessedBlock
-    await setLastProcessedBlock(target);
-    lastBlock = target;
-    blocksProcessed++;
   }
 
-  // 3. TTL-driven refresh (does NOT advance lastProcessedBlock)
+  // 3. TTL-driven refresh (runs regardless of block processing errors)
   await refreshExpiredEvaluations(indexer, lastBlock, config, allowedEcosystemDids);
 
   // 4. Cleanup permanently failed retries \u2192 mark UNTRUSTED
@@ -183,15 +188,22 @@ async function refreshExpiredEvaluations(
   allowedEcosystemDids: Set<string>,
 ): Promise<void> {
   const pool = getPool();
+  const refreshWindowSeconds = Math.floor(config.TRUST_TTL * config.TRUST_TTL_REFRESH_RATIO);
   const result = await pool.query<{ did: string }>(
-    'SELECT did FROM trust_results WHERE expires_at <= NOW() ORDER BY expires_at ASC LIMIT 100',
+    `SELECT did FROM trust_results
+     WHERE expires_at <= NOW() + $1 * INTERVAL '1 second'
+     ORDER BY expires_at ASC LIMIT 100`,
+    [refreshWindowSeconds],
   );
 
   if (result.rows.length === 0) return;
 
-  const expiredDids = new Set(result.rows.map((r) => r.did));
-  logger.info({ count: expiredDids.size }, 'Refreshing expired trust evaluations');
+  const refreshDids = new Set(result.rows.map((r) => r.did));
+  logger.info(
+    { count: refreshDids.size, refreshWindowSeconds },
+    'Refreshing trust evaluations approaching expiration',
+  );
 
-  await runPass1(expiredDids, indexer);
-  await runPass2(expiredDids, indexer, currentBlock, config.TRUST_TTL, allowedEcosystemDids);
+  await runPass1(refreshDids, indexer, currentBlock, config.TRUST_TTL);
+  await runPass2(refreshDids, indexer, currentBlock, config.TRUST_TTL, allowedEcosystemDids);
 }

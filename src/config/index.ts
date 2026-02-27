@@ -12,6 +12,7 @@ const envSchema = z.object({
   POLL_INTERVAL: z.coerce.number().int().positive().default(5),
   CACHE_TTL: z.coerce.number().int().positive().default(86400),
   TRUST_TTL: z.coerce.number().int().positive().default(3600),
+  TRUST_TTL_REFRESH_RATIO: z.coerce.number().min(0).max(1).default(0.2),
   POLL_OBJECT_CACHING_RETRY_DAYS: z.coerce.number().int().positive().default(7),
 
   // PostgreSQL

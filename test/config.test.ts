@@ -16,6 +16,7 @@ describe('loadConfig', () => {
     expect(config.POLL_INTERVAL).toBe(5);
     expect(config.CACHE_TTL).toBe(86400);
     expect(config.TRUST_TTL).toBe(3600);
+    expect(config.TRUST_TTL_REFRESH_RATIO).toBe(0.2);
     expect(config.POLL_OBJECT_CACHING_RETRY_DAYS).toBe(7);
     expect(config.INSTANCE_ROLE).toBe('leader');
     expect(config.PORT).toBe(3000);
@@ -35,6 +36,7 @@ describe('loadConfig', () => {
       POLL_INTERVAL: '10',
       CACHE_TTL: '43200',
       TRUST_TTL: '1800',
+      TRUST_TTL_REFRESH_RATIO: '0.3',
       INSTANCE_ROLE: 'reader',
       PORT: '8080',
       LOG_LEVEL: 'debug',
@@ -45,6 +47,7 @@ describe('loadConfig', () => {
     expect(config.POLL_INTERVAL).toBe(10);
     expect(config.CACHE_TTL).toBe(43200);
     expect(config.TRUST_TTL).toBe(1800);
+    expect(config.TRUST_TTL_REFRESH_RATIO).toBe(0.3);
     expect(config.INSTANCE_ROLE).toBe('reader');
     expect(config.PORT).toBe(8080);
     expect(config.LOG_LEVEL).toBe('debug');

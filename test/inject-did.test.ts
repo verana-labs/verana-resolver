@@ -28,6 +28,7 @@ const baseConfig: EnvConfig = {
   POLL_INTERVAL: 5,
   CACHE_TTL: 86400,
   TRUST_TTL: 3600,
+  TRUST_TTL_REFRESH_RATIO: 0.2,
   POLL_OBJECT_CACHING_RETRY_DAYS: 7,
   POSTGRES_HOST: 'localhost',
   POSTGRES_PORT: 5432,
@@ -40,6 +41,11 @@ const baseConfig: EnvConfig = {
   ECS_ECOSYSTEM_DIDS: 'did:web:ecosystem.example.com',
   ENABLE_POLLING: true,
   INJECT_DID_ENDPOINT_ENABLED: true,
+  DISABLE_DIGEST_SRI_VERIFICATION: false,
+  ECS_DIGEST_SERVICE: 'sha384-test',
+  ECS_DIGEST_ORG: 'sha384-test',
+  ECS_DIGEST_PERSONA: 'sha384-test',
+  ECS_DIGEST_UA: 'sha384-test',
   PORT: 3000,
   LOG_LEVEL: 'info',
 };
@@ -55,7 +61,7 @@ beforeEach(() => {
   (mockIndexer.getBlockHeight as ReturnType<typeof vi.fn>).mockResolvedValue({ height: 500 });
 });
 
-describe('POST /v1/inject/did — validation', () => {
+describe('POST /v1/inject/did \u2014 validation', () => {
   it('returns 400 when body is empty', async () => {
     const app = await buildApp();
     const res = await app.inject({
@@ -88,7 +94,7 @@ describe('POST /v1/inject/did — validation', () => {
   });
 });
 
-describe('POST /v1/inject/did — pass1 + pass2 success', () => {
+describe('POST /v1/inject/did \u2014 pass1 + pass2 success', () => {
   it('runs pass1 and pass2, returns ok for both', async () => {
     const did = 'did:web:example.com';
     mockRunPass1.mockResolvedValue({ succeeded: [did], failed: [] });
@@ -123,7 +129,7 @@ describe('POST /v1/inject/did — pass1 + pass2 success', () => {
   });
 });
 
-describe('POST /v1/inject/did — pass1 failure skips pass2', () => {
+describe('POST /v1/inject/did \u2014 pass1 failure skips pass2', () => {
   it('returns pass1=failed, pass2=skipped when pass1 fails', async () => {
     const did = 'did:web:bad.example.com';
     mockRunPass1.mockResolvedValue({ succeeded: [], failed: [did] });
@@ -143,7 +149,7 @@ describe('POST /v1/inject/did — pass1 failure skips pass2', () => {
   });
 });
 
-describe('POST /v1/inject/did — pass2 failure', () => {
+describe('POST /v1/inject/did \u2014 pass2 failure', () => {
   it('returns pass1=ok, pass2=failed when pass2 fails', async () => {
     const did = 'did:web:evalfail.example.com';
     mockRunPass1.mockResolvedValue({ succeeded: [did], failed: [] });
