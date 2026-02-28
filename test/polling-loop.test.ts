@@ -200,33 +200,8 @@ describe('pollOnce', () => {
     }),
   }));
 
-  vi.mock('../src/ssi/did-resolver.js', () => ({
-    resolveDID: vi.fn().mockResolvedValue({ result: null, error: { error: 'mock' } }),
-  }));
-
-  vi.mock('../src/ssi/vp-dereferencer.js', () => ({
-    dereferenceAllVPs: vi.fn().mockResolvedValue({ vps: [], errors: [] }),
-  }));
-
-  vi.mock('../src/trust/resolve-trust.js', () => ({
-    resolveTrust: vi.fn().mockResolvedValue({
-      did: 'did:web:test.example.com',
-      trustStatus: 'UNTRUSTED',
-      production: false,
-      evaluatedAt: new Date().toISOString(),
-      evaluatedAtBlock: 100,
-      expiresAt: new Date(Date.now() + 3600000).toISOString(),
-      credentials: [],
-      failedCredentials: [],
-      dereferenceErrors: [],
-    }),
-    createEvaluationContext: vi.fn().mockReturnValue({
-      visitedDids: new Set(),
-      currentBlock: 100,
-      cacheTtlSeconds: 3600,
-      trustMemo: new Map(),
-      allowedEcosystemDids: new Set(),
-    }),
+  vi.mock('../src/polling/verre-pass.js', () => ({
+    runVerrePass: vi.fn().mockResolvedValue({ succeeded: ['did:web:test.example.com'], failed: [] }),
   }));
 
   vi.mock('../src/trust/trust-store.js', () => ({
@@ -279,8 +254,11 @@ describe('pollOnce', () => {
     const config = {
       POLL_INTERVAL: 5,
       TRUST_TTL: 3600,
+      TRUST_TTL_REFRESH_RATIO: 0.2,
       POLL_OBJECT_CACHING_RETRY_DAYS: 7,
       ECS_ECOSYSTEM_DIDS: 'did:web:ecosystem.example.com',
+      VPR_REGISTRIES: '[]',
+      DISABLE_DIGEST_SRI_VERIFICATION: false,
     } as any;
 
     const result = await pollOnce(mockIndexer, config);
@@ -307,8 +285,11 @@ describe('pollOnce', () => {
     const config = {
       POLL_INTERVAL: 5,
       TRUST_TTL: 3600,
+      TRUST_TTL_REFRESH_RATIO: 0.2,
       POLL_OBJECT_CACHING_RETRY_DAYS: 7,
       ECS_ECOSYSTEM_DIDS: 'did:web:ecosystem.example.com',
+      VPR_REGISTRIES: '[]',
+      DISABLE_DIGEST_SRI_VERIFICATION: false,
     } as any;
 
     const result = await pollOnce(mockIndexer, config);

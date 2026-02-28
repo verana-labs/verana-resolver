@@ -1,9 +1,10 @@
+import type { VerifiablePublicRegistry } from '@verana-labs/verre';
 import type { IndexerClient } from '../indexer/client.js';
 import type { EnvConfig } from '../config/index.js';
 import { tryAcquireLeaderLock, releaseLeaderLock } from './leader.js';
 import { getLastProcessedBlock, setLastProcessedBlock } from './resolver-state.js';
-import { extractAffectedDids, runPass1 } from './pass1.js';
-import { runPass2 } from './pass2.js';
+import { extractAffectedDids } from './pass1.js';
+import { runVerrePass } from './verre-pass.js';
 import { getRetryEligible, removeReattemptable, cleanupExpiredRetries } from './reattemptable.js';
 import { markUntrusted } from '../trust/trust-store.js';
 import { getPool } from '../db/index.js';
@@ -55,6 +56,17 @@ export async function startPollingLoop(opts: PollingLoopOptions): Promise<void> 
   }
 }
 
+function parseVprRegistries(json: string): VerifiablePublicRegistry[] {
+  try {
+    const parsed = JSON.parse(json) as VerifiablePublicRegistry[];
+    if (!Array.isArray(parsed)) return [];
+    return parsed;
+  } catch {
+    logger.warn({ json }, 'Failed to parse VPR_REGISTRIES JSON — using empty list');
+    return [];
+  }
+}
+
 export async function pollOnce(
   indexer: IndexerClient,
   config: EnvConfig,
@@ -62,10 +74,9 @@ export async function pollOnce(
   let blocksProcessed = 0;
   let didsAffected = 0;
 
-  // Parse allowed ecosystem DIDs from config
-  const allowedEcosystemDids = new Set(
-    config.ECS_ECOSYSTEM_DIDS.split(',').map((d) => d.trim()).filter(Boolean),
-  );
+  // Parse VPR registries for verre
+  const verifiablePublicRegistries = parseVprRegistries(config.VPR_REGISTRIES);
+  const skipDigestSRICheck = config.DISABLE_DIGEST_SRI_VERIFICATION;
 
   // Clear Indexer memo per cycle
   indexer.clearMemo();
@@ -99,17 +110,11 @@ export async function pollOnce(
 
       if (affectedDids.size > 0) {
 
-        // Pass1: dereference affected DIDs
-        await runPass1(affectedDids, indexer, target, config.TRUST_TTL);
+        // Unified verre pass: DID resolution + VP dereferencing + trust evaluation
+        await runVerrePass(affectedDids, indexer, target, config.TRUST_TTL, verifiablePublicRegistries, skipDigestSRICheck);
 
-        // Retry eligible Pass1 failures
-        await retryEligiblePass1(indexer, target, config);
-
-        // Pass2: re-evaluate trust
-        await runPass2(affectedDids, indexer, target, config.TRUST_TTL, allowedEcosystemDids);
-
-        // Retry eligible Pass2 failures
-        await retryEligiblePass2(indexer, target, config, allowedEcosystemDids);
+        // Retry eligible failures from previous cycles
+        await retryEligibleDids(indexer, target, config, verifiablePublicRegistries, skipDigestSRICheck);
 
         didsAffected += affectedDids.size;
       }
@@ -125,7 +130,7 @@ export async function pollOnce(
   }
 
   // 3. TTL-driven refresh (runs regardless of block processing errors)
-  await refreshExpiredEvaluations(indexer, lastBlock, config, allowedEcosystemDids);
+  await refreshExpiredEvaluations(indexer, lastBlock, config, verifiablePublicRegistries, skipDigestSRICheck);
 
   // 4. Cleanup permanently failed retries \u2192 mark UNTRUSTED
   const expired = await cleanupExpiredRetries(config.POLL_OBJECT_CACHING_RETRY_DAYS);
@@ -141,41 +146,27 @@ export async function pollOnce(
   return { blocksProcessed, didsAffected };
 }
 
-async function retryEligiblePass1(
+async function retryEligibleDids(
   indexer: IndexerClient,
   currentBlock: number,
   config: EnvConfig,
+  verifiablePublicRegistries: VerifiablePublicRegistry[],
+  skipDigestSRICheck: boolean,
 ): Promise<void> {
   const eligible = await getRetryEligible(config.POLL_OBJECT_CACHING_RETRY_DAYS);
-  const pass1Eligible = eligible.filter(
-    (r) => r.resourceType === 'DID_DOC' || r.resourceType === 'VP',
+  if (eligible.length === 0) return;
+
+  // Collect all unique DIDs from eligible retries (DID_DOC, VP, and TRUST_EVAL)
+  const dids = new Set(
+    eligible
+      .map((r) => r.resourceId)
+      .filter((id) => id.startsWith('did:')),
   );
+  if (dids.size === 0) return;
 
-  if (pass1Eligible.length === 0) return;
-
-  const dids = new Set(pass1Eligible.map((r) => r.resourceId));
-  const result = await runPass1(dids, indexer, currentBlock, config.TRUST_TTL);
+  const result = await runVerrePass(dids, indexer, currentBlock, config.TRUST_TTL, verifiablePublicRegistries, skipDigestSRICheck);
 
   // Remove successfully retried resources
-  for (const did of result.succeeded) {
-    await removeReattemptable(did);
-  }
-}
-
-async function retryEligiblePass2(
-  indexer: IndexerClient,
-  currentBlock: number,
-  config: EnvConfig,
-  allowedEcosystemDids: Set<string>,
-): Promise<void> {
-  const eligible = await getRetryEligible(config.POLL_OBJECT_CACHING_RETRY_DAYS);
-  const pass2Eligible = eligible.filter((r) => r.resourceType === 'TRUST_EVAL');
-
-  if (pass2Eligible.length === 0) return;
-
-  const dids = new Set(pass2Eligible.map((r) => r.resourceId));
-  const result = await runPass2(dids, indexer, currentBlock, config.TRUST_TTL, allowedEcosystemDids);
-
   for (const did of result.succeeded) {
     await removeReattemptable(did);
   }
@@ -185,7 +176,8 @@ async function refreshExpiredEvaluations(
   indexer: IndexerClient,
   currentBlock: number,
   config: EnvConfig,
-  allowedEcosystemDids: Set<string>,
+  verifiablePublicRegistries: VerifiablePublicRegistry[],
+  skipDigestSRICheck: boolean,
 ): Promise<void> {
   const pool = getPool();
   const refreshWindowSeconds = Math.floor(config.TRUST_TTL * config.TRUST_TTL_REFRESH_RATIO);
@@ -204,6 +196,5 @@ async function refreshExpiredEvaluations(
     'Refreshing trust evaluations approaching expiration',
   );
 
-  await runPass1(refreshDids, indexer, currentBlock, config.TRUST_TTL);
-  await runPass2(refreshDids, indexer, currentBlock, config.TRUST_TTL, allowedEcosystemDids);
+  await runVerrePass(refreshDids, indexer, currentBlock, config.TRUST_TTL, verifiablePublicRegistries, skipDigestSRICheck);
 }

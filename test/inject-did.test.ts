@@ -4,20 +4,14 @@ import { createInjectDidRoute } from '../src/routes/inject-did.js';
 import type { EnvConfig } from '../src/config/index.js';
 import type { IndexerClient } from '../src/indexer/client.js';
 
-// Mock pass1 and pass2
-vi.mock('../src/polling/pass1.js', () => ({
-  runPass1: vi.fn(),
+// Mock verre pass
+vi.mock('../src/polling/verre-pass.js', () => ({
+  runVerrePass: vi.fn(),
 }));
 
-vi.mock('../src/polling/pass2.js', () => ({
-  runPass2: vi.fn(),
-}));
+import { runVerrePass } from '../src/polling/verre-pass.js';
 
-import { runPass1 } from '../src/polling/pass1.js';
-import { runPass2 } from '../src/polling/pass2.js';
-
-const mockRunPass1 = vi.mocked(runPass1);
-const mockRunPass2 = vi.mocked(runPass2);
+const mockRunVerrePass = vi.mocked(runVerrePass);
 
 const mockIndexer = {
   getBlockHeight: vi.fn().mockResolvedValue({ height: 500 }),
@@ -42,6 +36,7 @@ const baseConfig: EnvConfig = {
   ENABLE_POLLING: true,
   INJECT_DID_ENDPOINT_ENABLED: true,
   DISABLE_DIGEST_SRI_VERIFICATION: false,
+  VPR_REGISTRIES: '[]',
   ECS_DIGEST_SERVICE: 'sha384-test',
   ECS_DIGEST_ORG: 'sha384-test',
   ECS_DIGEST_PERSONA: 'sha384-test',
@@ -94,11 +89,10 @@ describe('POST /v1/inject/did \u2014 validation', () => {
   });
 });
 
-describe('POST /v1/inject/did \u2014 pass1 + pass2 success', () => {
-  it('runs pass1 and pass2, returns ok for both', async () => {
+describe('POST /v1/inject/did — verre pass success', () => {
+  it('runs verre pass and returns ok', async () => {
     const did = 'did:web:example.com';
-    mockRunPass1.mockResolvedValue({ succeeded: [did], failed: [] });
-    mockRunPass2.mockResolvedValue({ succeeded: [did], failed: [] });
+    mockRunVerrePass.mockResolvedValue({ succeeded: [did], failed: [] });
 
     const app = await buildApp();
     const res = await app.inject({
@@ -110,29 +104,23 @@ describe('POST /v1/inject/did \u2014 pass1 + pass2 success', () => {
     expect(res.statusCode).toBe(200);
     const body = res.json();
     expect(body.did).toBe(did);
-    expect(body.pass1).toBe('ok');
-    expect(body.pass2).toBe('ok');
+    expect(body.result).toBe('ok');
 
-    expect(mockRunPass1).toHaveBeenCalledWith(
+    expect(mockRunVerrePass).toHaveBeenCalledWith(
       new Set([did]),
       mockIndexer,
       500,
       baseConfig.TRUST_TTL,
-    );
-    expect(mockRunPass2).toHaveBeenCalledWith(
-      new Set([did]),
-      mockIndexer,
-      500,
-      baseConfig.TRUST_TTL,
-      new Set(['did:web:ecosystem.example.com']),
+      [],
+      false,
     );
   });
 });
 
-describe('POST /v1/inject/did \u2014 pass1 failure skips pass2', () => {
-  it('returns pass1=failed, pass2=skipped when pass1 fails', async () => {
+describe('POST /v1/inject/did — verre pass failure', () => {
+  it('returns result=failed when verre pass fails', async () => {
     const did = 'did:web:bad.example.com';
-    mockRunPass1.mockResolvedValue({ succeeded: [], failed: [did] });
+    mockRunVerrePass.mockResolvedValue({ succeeded: [], failed: [did] });
 
     const app = await buildApp();
     const res = await app.inject({
@@ -143,28 +131,6 @@ describe('POST /v1/inject/did \u2014 pass1 failure skips pass2', () => {
 
     expect(res.statusCode).toBe(200);
     const body = res.json();
-    expect(body.pass1).toBe('failed');
-    expect(body.pass2).toBe('skipped');
-    expect(mockRunPass2).not.toHaveBeenCalled();
-  });
-});
-
-describe('POST /v1/inject/did \u2014 pass2 failure', () => {
-  it('returns pass1=ok, pass2=failed when pass2 fails', async () => {
-    const did = 'did:web:evalfail.example.com';
-    mockRunPass1.mockResolvedValue({ succeeded: [did], failed: [] });
-    mockRunPass2.mockResolvedValue({ succeeded: [], failed: [did] });
-
-    const app = await buildApp();
-    const res = await app.inject({
-      method: 'POST',
-      url: '/v1/inject/did',
-      payload: { did },
-    });
-
-    expect(res.statusCode).toBe(200);
-    const body = res.json();
-    expect(body.pass1).toBe('ok');
-    expect(body.pass2).toBe('failed');
+    expect(body.result).toBe('failed');
   });
 });
