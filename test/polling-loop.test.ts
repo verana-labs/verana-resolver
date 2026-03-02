@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { extractAffectedDids } from '../src/polling/pass1.js';
+import { extractAffectedDids } from '../src/polling/extract-dids.js';
 import type { ActivityItem } from '../src/indexer/types.js';
 
 // --- extractAffectedDids ---

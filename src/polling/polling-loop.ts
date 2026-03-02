@@ -3,7 +3,7 @@ import type { IndexerClient } from '../indexer/client.js';
 import type { EnvConfig } from '../config/index.js';
 import { tryAcquireLeaderLock, releaseLeaderLock } from './leader.js';
 import { getLastProcessedBlock, setLastProcessedBlock } from './resolver-state.js';
-import { extractAffectedDids } from './pass1.js';
+import { extractAffectedDids } from './extract-dids.js';
 import { runVerrePass } from './verre-pass.js';
 import { getRetryEligible, removeReattemptable, cleanupExpiredRetries } from './reattemptable.js';
 import { markUntrusted } from '../trust/trust-store.js';
