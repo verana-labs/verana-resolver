@@ -52,6 +52,7 @@ The **Verana Trust Resolver** is a core infrastructure component of the [Verana]
 | `ECS_DIGEST_ORG` | *(spec v4)* | SHA-384 JCS digest of the OrganizationCredential JSON schema (spec [ECS-TR]) |
 | `ECS_DIGEST_PERSONA` | *(spec v4)* | SHA-384 JCS digest of the PersonaCredential JSON schema (spec [ECS-TR]) |
 | `ECS_DIGEST_UA` | *(spec v4)* | SHA-384 JCS digest of the UserAgentCredential JSON schema (spec [ECS-TR]) |
+| `VPR_REGISTRIES` | `[{"id":"vpr:verana:vna-testnet-1","baseUrls":["https://idx.testnet.verana.network/verana"],"production":true},{"id":"vpr:verana:vna-devnet-1","baseUrls":["https://idx.devnet.verana.network/verana"],"production":true}]` | Verifiable Public Registries (JSON array) |
 
 ## Tech Stack
 

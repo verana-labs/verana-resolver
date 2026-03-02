@@ -41,7 +41,7 @@ const envSchema = z.object({
 
   // Verre — Verifiable Public Registries (JSON array)
   // Each entry: { "id": "vpr:verana:vna-testnet-1", "baseUrls": ["https://idx.example.com/vpr"], "production": true }
-  VPR_REGISTRIES: z.string().default('[]'),
+  VPR_REGISTRIES: z.string().default('[{"id":"vpr:verana:vna-testnet-1","baseUrls":["https://idx.testnet.verana.network/verana"],"production":true},{"id":"vpr:verana:vna-devnet-1","baseUrls":["https://idx.devnet.verana.network/verana"],"production":true}]'),
 
   // ECS schema digests (spec [ECS-TR] reference values)
   ECS_DIGEST_SERVICE: z.string().default('sha384-PVseqJJjEGMVRcht77rE2yLqRnCiLBRLOklSuAshSEXK3eyITmUpDBhpQryJ/XIx'),
