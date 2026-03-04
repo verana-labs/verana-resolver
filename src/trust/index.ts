@@ -1,10 +1,6 @@
-export { resolveTrust, createEvaluationContext } from './resolve-trust.js';
-export { evaluateCredential } from './evaluate-credential.js';
-export { classifyEcsTypeByDigest, computeEcsDigest, verifyEcsTrCompleteness } from './ecs-schema.js';
-export { evaluateVSRequirements } from './vs-requirements.js';
-export { buildPermissionChain } from './permission-chain.js';
-export { getSummaryTrustResult, getFullTrustResult, upsertTrustResult } from './trust-store.js';
+export { getSummaryTrustResult, getFullTrustResult, upsertTrustResult, markUntrusted } from './trust-store.js';
 export type { TrustResultSummary } from './trust-store.js';
+export { verreLogger } from './verre-logger.js';
 export type {
   TrustResult,
   TrustStatus,
