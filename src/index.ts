@@ -11,7 +11,7 @@ import { registry, queryDurationSeconds } from './observability/metrics.js';
 import { getPool, closePool } from './db/index.js';
 import { runMigrations } from './db/migrate.js';
 import { connectRedis, disconnectRedis } from './cache/redis-client.js';
-import { startPollingLoop } from './polling/polling-loop.js';
+import { startPollingLoop, parseVprRegistries } from './polling/polling-loop.js';
 import { createInjectDidRoute } from './routes/inject-did.js';
 import { registerSwagger } from './swagger.js';
 import { createLogger } from './logger.js';
@@ -66,8 +66,8 @@ async function main(): Promise<void> {
 
   // Q2+ endpoints need IndexerClient
   const indexer = new IndexerClient(config.INDEXER_API);
-  await createQ2Route(indexer)(server);
-  await createQ3Route(indexer)(server);
+  await createQ2Route(parseVprRegistries(config.VPR_REGISTRIES))(server);
+  await createQ3Route(parseVprRegistries(config.VPR_REGISTRIES))(server);
   await createQ4Route(indexer)(server);
 
   // Dev-mode: inject DID endpoint

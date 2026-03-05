@@ -56,7 +56,7 @@ export async function startPollingLoop(opts: PollingLoopOptions): Promise<void> 
   }
 }
 
-function parseVprRegistries(json: string): VerifiablePublicRegistry[] {
+export function parseVprRegistries(json: string): VerifiablePublicRegistry[] {
   try {
     const parsed = JSON.parse(json) as VerifiablePublicRegistry[];
     if (!Array.isArray(parsed)) return [];

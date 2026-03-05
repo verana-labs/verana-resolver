@@ -1,4 +1,4 @@
-export { startPollingLoop, pollOnce } from './polling-loop.js';
+export { startPollingLoop, pollOnce, parseVprRegistries } from './polling-loop.js';
 export type { PollingLoopOptions } from './polling-loop.js';
 export { tryAcquireLeaderLock, releaseLeaderLock } from './leader.js';
 export { getLastProcessedBlock, setLastProcessedBlock } from './resolver-state.js';
