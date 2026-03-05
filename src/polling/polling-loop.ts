@@ -162,7 +162,7 @@ export async function pollOnce(
   return { blocksProcessed, didsAffected };
 }
 
-const INITIAL_SYNC_TIMEOUT_MS = 60_000; // Higer timeout because this endpoint may require pagination and can take longer to return all results.
+const INITIAL_SYNC_TIMEOUT_MS = 60_000; // Higher timeout because this endpoint may require pagination and can take longer to return all results.
 async function collectInitialSyncDids(indexerHeight: number): Promise<Set<string>> {
   const syncClient = new IndexerClient(loadConfig().INDEXER_API, INITIAL_SYNC_TIMEOUT_MS); // Create a IndexerClient instance specifically  for the initial sync process
 
