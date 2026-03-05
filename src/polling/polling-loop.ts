@@ -1,6 +1,6 @@
 import type { VerifiablePublicRegistry } from '@verana-labs/verre';
-import type { IndexerClient } from '../indexer/client.js';
-import type { EnvConfig } from '../config/index.js';
+import { IndexerClient } from '../indexer/client.js';
+import { loadConfig, type EnvConfig } from '../config/index.js';
 import { tryAcquireLeaderLock, releaseLeaderLock } from './leader.js';
 import { getLastProcessedBlock, setLastProcessedBlock } from './resolver-state.js';
 import { extractAffectedDids } from './extract-dids.js';
@@ -85,9 +85,25 @@ export async function pollOnce(
   const heightResp = await indexer.getBlockHeight();
   const indexerHeight = heightResp.height;
 
-  // 2. Process blocks sequentially
+  // 2. Initial sync on first run: snapshot all DIDs from permissions and trust registries
   let lastBlock = await getLastProcessedBlock();
 
+  if (lastBlock === 0) {
+    const affectedDids = await collectInitialSyncDids(indexerHeight);
+    logger.info({ count: affectedDids.size, indexerHeight }, 'Initial sync: running verre pass');
+
+    if (affectedDids.size > 0) {
+      await runVerrePass(affectedDids, indexer, indexerHeight, config.TRUST_TTL, verifiablePublicRegistries, skipDigestSRICheck);
+      await retryEligibleDids(indexer, indexerHeight, config, verifiablePublicRegistries, skipDigestSRICheck);
+      didsAffected += affectedDids.size;
+    }
+
+    await setLastProcessedBlock(indexerHeight);
+    lastBlock = indexerHeight;
+    blocksProcessed++;
+  }
+
+  // 3. Process blocks sequentially
   while (lastBlock < indexerHeight) {
     const target = lastBlock + 1;
 
@@ -144,6 +160,22 @@ export async function pollOnce(
   }
 
   return { blocksProcessed, didsAffected };
+}
+
+const INITIAL_SYNC_TIMEOUT_MS = 60_000; // Higher timeout because this endpoint may require pagination and can take longer to return all results.
+async function collectInitialSyncDids(indexerHeight: number): Promise<Set<string>> {
+  const syncClient = new IndexerClient(loadConfig().INDEXER_API, INITIAL_SYNC_TIMEOUT_MS); // Create a IndexerClient instance specifically  for the initial sync process
+
+  const [{ permissions }, { trust_registries }] = await Promise.all([
+    syncClient.listPermissions({}, indexerHeight),
+    syncClient.listTrustRegistries({}, indexerHeight),
+  ]);
+
+  return new Set(
+    [...permissions, ...trust_registries]
+      .map((item) => item.did)
+      .filter((did): did is string => !!did),
+  );
 }
 
 async function retryEligibleDids(
