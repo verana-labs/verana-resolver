@@ -1,8 +1,7 @@
-import type { VerifiablePublicRegistry } from '@verana-labs/verre';
 import type { FastifyInstance } from 'fastify';
 import type { IndexerClient } from '../indexer/client.js';
 import type { EnvConfig } from '../config/index.js';
-import { runVerrePass } from '../polling/verre-pass.js';
+import { runVerrePass, parseVprRegistries } from '../polling/index.js';
 import { createLogger } from '../logger.js';
 
 const logger = createLogger('inject-did');
@@ -59,10 +58,7 @@ export function createInjectDidRoute(
       logger.info({ did }, 'Injecting DID for evaluation');
 
       // Parse VPR registries for verre
-      let verifiablePublicRegistries: VerifiablePublicRegistry[] = [];
-      try {
-        verifiablePublicRegistries = JSON.parse(config.VPR_REGISTRIES) as VerifiablePublicRegistry[];
-      } catch { /* use empty list */ }
+      const verifiablePublicRegistries = parseVprRegistries(config.VPR_REGISTRIES);
       const skipDigestSRICheck = config.DISABLE_DIGEST_SRI_VERIFICATION;
 
       // Get current block height for context
