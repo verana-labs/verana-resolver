@@ -49,6 +49,9 @@ RUN --mount=type=cache,target=/root/.npm \
 # Copy built application
 COPY --from=builder --chown=resolver:nodejs /app/dist ./dist
 
+# Copy database migrations
+COPY --from=builder --chown=resolver:nodejs /app/migrations ./migrations
+
 # Copy entrypoint script
 COPY --chown=resolver:nodejs entrypoint.sh ./entrypoint.sh
 RUN chmod +x /app/entrypoint.sh
