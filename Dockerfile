@@ -43,6 +43,7 @@ RUN addgroup -S -g 1001 nodejs \
 
 # Copy package files and install production-only dependencies
 COPY --from=builder /app/package.json ./
+COPY --from=builder /app/patches ./patches
 RUN --mount=type=cache,target=/root/.npm \
     npm install --omit=dev
 
