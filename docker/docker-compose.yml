@@ -1,6 +1,5 @@
-# Verana Trust Resolver — Developer Dependencies
+# Verana Trust Resolver
 #
-# Starts PostgreSQL and Redis for local development.
 # Usage:
 #   cd docker && docker compose up -d
 #   cd docker && docker compose down          # stop
@@ -36,6 +35,33 @@ services:
       interval: 5s
       timeout: 3s
       retries: 5
+
+  resolver:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: verana
+      POSTGRES_PASSWORD: verana
+      POSTGRES_DB: verana_resolver
+      REDIS_URL: redis://redis:6379
+      INDEXER_API: ${INDEXER_API:-https://idx.devnet.verana.network}
+      ECS_ECOSYSTEM_DIDS: ${ECS_ECOSYSTEM_DIDS:-did:web:ecosystem1.example.com}
+      LOG_LEVEL: ${LOG_LEVEL:-debug}
+      INSTANCE_ROLE: ${INSTANCE_ROLE:-leader}
+      ENABLE_POLLING: ${ENABLE_POLLING:-true}
+      INJECT_DID_ENDPOINT_ENABLED: ${INJECT_DID_ENDPOINT_ENABLED:-true}
+      DISABLE_DIGEST_SRI_VERIFICATION: ${DISABLE_DIGEST_SRI_VERIFICATION:-true}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
 
 volumes:
   pgdata:
