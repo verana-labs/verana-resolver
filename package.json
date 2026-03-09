@@ -8,7 +8,6 @@
     "node": ">=22.0.0"
   },
   "scripts": {
-    "postinstall": "patch-package",
     "build": "tsc",
     "start": "node dist/index.js",
     "dev": "tsx watch src/index.ts",
@@ -24,11 +23,10 @@
     "@fastify/cors": "^11.0.0",
     "@fastify/swagger": "^9.7.0",
     "@fastify/swagger-ui": "^5.2.5",
-    "@verana-labs/verre": "^0.2.3",
+    "@verana-labs/verre": "^0.2.4",
     "dotenv": "^17.3.1",
     "fastify": "^5.2.1",
     "ioredis": "^5.4.2",
-    "patch-package": "^8.0.0",
     "pg": "^8.13.1",
     "pino": "^10.3.1",
     "prom-client": "^15.1.3",
