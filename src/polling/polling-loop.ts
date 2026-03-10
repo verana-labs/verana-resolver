@@ -167,8 +167,9 @@ async function collectInitialSyncDids(indexerHeight: number): Promise<Set<string
   const syncClient = new IndexerClient(loadConfig().INDEXER_API, INITIAL_SYNC_TIMEOUT_MS); // Create a IndexerClient instance specifically  for the initial sync process
 
   const [{ permissions }, { trust_registries }] = await Promise.all([
-    syncClient.listPermissions({}, indexerHeight),
-    syncClient.listTrustRegistries({}, indexerHeight),
+    // At the moment, there is no way to know the max size, and it's better to get all
+    syncClient.listPermissions({response_max_size: 1024}, indexerHeight),
+    syncClient.listTrustRegistries({response_max_size: 1024}, indexerHeight),
   ]);
 
   return new Set(
