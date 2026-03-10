@@ -1,5 +1,34 @@
 # Changelog
 
+## [0.3.0](https://github.com/verana-labs/verana-resolver/compare/v0.2.0...v0.3.0) (2026-03-10)
+
+
+### Features
+
+* add TRUST_TTL_REFRESH_RATIO to trigger re-evaluation before expiration ([#122](https://github.com/verana-labs/verana-resolver/issues/122)) ([e50d5dd](https://github.com/verana-labs/verana-resolver/commit/e50d5ddd629667c967b3e72a02ffa64327acfb4b))
+* enable validate permissions with verre ([#125](https://github.com/verana-labs/verana-resolver/issues/125)) ([2cab260](https://github.com/verana-labs/verana-resolver/commit/2cab260cad4c5dccd2f3e21f40876c43cb098274))
+* enhance initial sync with list of dids ([#124](https://github.com/verana-labs/verana-resolver/issues/124)) ([89828a5](https://github.com/verana-labs/verana-resolver/commit/89828a562cf0499d0de0c88a111b0469b7cd9d4f))
+* implement ECS schema digest verification using JCS canonicalization ([#116](https://github.com/verana-labs/verana-resolver/issues/116)) ([8790325](https://github.com/verana-labs/verana-resolver/commit/8790325bdbc494bedc3a8b3d9a028632487a1c57))
+* initial VerRe integration ([#123](https://github.com/verana-labs/verana-resolver/issues/123)) ([e3f5a2c](https://github.com/verana-labs/verana-resolver/commit/e3f5a2c003e896b5eb49bd841220f5441b43c49d))
+
+
+### Bug Fixes
+
+* add migration folder to docker image ([#127](https://github.com/verana-labs/verana-resolver/issues/127)) ([afb074f](https://github.com/verana-labs/verana-resolver/commit/afb074ff4dd3387211d4fe5e2d7e2ba99673d299))
+* create verre patch for document loader ([#128](https://github.com/verana-labs/verana-resolver/issues/128)) ([7a3d7f3](https://github.com/verana-labs/verana-resolver/commit/7a3d7f35b140cd1034ba60b6c821e71d7b5ea043))
+* deduplicate VP endpoints and handle duplicate credential inserts ([#117](https://github.com/verana-labs/verana-resolver/issues/117)) ([9d6f3f2](https://github.com/verana-labs/verana-resolver/commit/9d6f3f241f19cc1aecca03e38708f09a65a4d96f))
+* include patch in docker container ([#130](https://github.com/verana-labs/verana-resolver/issues/130)) ([2c4cd65](https://github.com/verana-labs/verana-resolver/commit/2c4cd657d44cc38fb77da7cee270196f5feb9424))
+* remove validUntil cache expiry check causing infinite DID re-resolution ([#120](https://github.com/verana-labs/verana-resolver/issues/120)) ([2153e7f](https://github.com/verana-labs/verana-resolver/commit/2153e7f79d086513133618dae7285c1c36c44a69))
+* separate VP dereference errors from failedCredentials ([#119](https://github.com/verana-labs/verana-resolver/issues/119)) ([52564d2](https://github.com/verana-labs/verana-resolver/commit/52564d279b1ce617f3ba08acb8c88563ce3d5512))
+* update json package ([#129](https://github.com/verana-labs/verana-resolver/issues/129)) ([5a0fd78](https://github.com/verana-labs/verana-resolver/commit/5a0fd78c0d7ead6fd3deeb6e9206360dab706e5d))
+* use response_max_size to get all dids ([#132](https://github.com/verana-labs/verana-resolver/issues/132)) ([32dce2b](https://github.com/verana-labs/verana-resolver/commit/32dce2b9034fc82f51c8be815383505c859b35e1))
+* use verre 0.2.4 in place node patch ([#131](https://github.com/verana-labs/verana-resolver/issues/131)) ([c9bb28e](https://github.com/verana-labs/verana-resolver/commit/c9bb28ef1808af2b0eafcc7fa371430e1e4844cd))
+
+
+### Performance Improvements
+
+* optimize Indexer API calls in credential evaluation ([#121](https://github.com/verana-labs/verana-resolver/issues/121)) ([d69c7ad](https://github.com/verana-labs/verana-resolver/commit/d69c7ad59b915a1f417ec3570478f8dd7414d8b7))
+
 ## [0.2.0](https://github.com/verana-labs/verana-resolver/compare/v0.1.0...v0.2.0) (2026-02-15)
 
 
