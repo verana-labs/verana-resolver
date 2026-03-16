@@ -1,12 +1,7 @@
 import type { ActivityItem } from '../indexer/types.js';
 
+const DID_FIELDS = ['did', 'grantee'] as const;
 const WATCHED_ENTITY_TYPES = new Set(['Permission', 'TrustRegistry']);
-
-function extractDidsFromChanges(changes: Record<string, unknown>): string[] {
-  return Object.values(changes).filter(
-    (v): v is string => typeof v === 'string' && v.startsWith('did:'),
-  );
-}
 
 export function extractAffectedDids(activity: ActivityItem[]): Set<string> {
   const dids = new Set<string>();
@@ -17,8 +12,11 @@ export function extractAffectedDids(activity: ActivityItem[]): Set<string> {
     }
 
     if (WATCHED_ENTITY_TYPES.has(item.entity_type) && item.changes) {
-      for (const did of extractDidsFromChanges(item.changes)) {
-        dids.add(did);
+      for (const field of DID_FIELDS) {
+        const value = item.changes[field];
+        if (typeof value === 'string' && value.startsWith('did:')) {
+          dids.add(value);
+        }
       }
     }
   }
