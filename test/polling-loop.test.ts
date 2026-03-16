@@ -13,12 +13,12 @@ describe('extractAffectedDids', () => {
     const activity: ActivityItem[] = [{
       timestamp: '2026-01-01T00:00:00Z',
       block_height: '100',
-      entity_type: 'permission',
+      entity_type: 'Permission',
       entity_id: '1',
       account: 'verana1abc',
       msg: 'MsgCreatePermission',
       changes: {
-        did: { old: null, new: 'did:web:acme.example.com' },
+        did: 'did:web:acme.example.com',
       },
     }];
     const dids = extractAffectedDids(activity);
@@ -29,12 +29,12 @@ describe('extractAffectedDids', () => {
     const activity: ActivityItem[] = [{
       timestamp: '2026-01-01T00:00:00Z',
       block_height: '100',
-      entity_type: 'permission',
+      entity_type: 'Permission',
       entity_id: '1',
       account: 'verana1abc',
       msg: 'MsgRevokePermission',
       changes: {
-        did: { old: 'did:web:old.example.com', new: null },
+        did: 'did:web:old.example.com'
       },
     }];
     const dids = extractAffectedDids(activity);
@@ -45,12 +45,12 @@ describe('extractAffectedDids', () => {
     const activity: ActivityItem[] = [{
       timestamp: '2026-01-01T00:00:00Z',
       block_height: '100',
-      entity_type: 'permission',
+      entity_type: 'Permission',
       entity_id: '2',
       account: 'verana1xyz',
       msg: 'MsgGrantPermission',
       changes: {
-        grantee: { old: null, new: 'did:web:grantee.example.com' },
+        grantee: 'did:web:grantee.example.com',
       },
     }];
     const dids = extractAffectedDids(activity);
@@ -61,12 +61,12 @@ describe('extractAffectedDids', () => {
     const activity: ActivityItem[] = [{
       timestamp: '2026-01-01T00:00:00Z',
       block_height: '100',
-      entity_type: 'trust_registry',
+      entity_type: 'TrustRegistry',
       entity_id: '5',
       account: 'verana1abc',
       msg: 'MsgCreateTrustRegistry',
       changes: {
-        did: { old: null, new: 'did:web:ecosystem.example.com' },
+        did: 'did:web:ecosystem.example.com',
       },
     }];
     const dids = extractAffectedDids(activity);
@@ -92,20 +92,20 @@ describe('extractAffectedDids', () => {
       {
         timestamp: '2026-01-01T00:00:00Z',
         block_height: '100',
-        entity_type: 'permission',
+        entity_type: 'Permission',
         entity_id: '1',
         account: 'verana1abc',
         msg: 'MsgCreatePermission',
-        changes: { did: { old: null, new: 'did:web:acme.example.com' } },
+        changes: { did: 'did:web:acme.example.com' },
       },
       {
         timestamp: '2026-01-01T00:00:00Z',
         block_height: '100',
-        entity_type: 'permission',
+        entity_type: 'Permission',
         entity_id: '2',
         account: 'verana1def',
         msg: 'MsgCreatePermission',
-        changes: { did: { old: null, new: 'did:web:acme.example.com' } },
+        changes: { did: 'did:web:acme.example.com' },
       },
     ];
     const dids = extractAffectedDids(activity);
@@ -117,7 +117,7 @@ describe('extractAffectedDids', () => {
     const activity: ActivityItem[] = [{
       timestamp: '2026-01-01T00:00:00Z',
       block_height: '100',
-      entity_type: 'permission',
+      entity_type: 'Permission',
       entity_id: '1',
       account: 'verana1abc123',
       msg: 'MsgCreatePermission',
@@ -132,20 +132,20 @@ describe('extractAffectedDids', () => {
       {
         timestamp: '2026-01-01T00:00:00Z',
         block_height: '100',
-        entity_type: 'permission',
+        entity_type: 'Permission',
         entity_id: '1',
         account: 'verana1abc',
         msg: 'MsgCreatePermission',
-        changes: { did: { old: null, new: 'did:web:a.example.com' } },
+        changes: { did: 'did:web:a.example.com' },
       },
       {
         timestamp: '2026-01-01T00:00:00Z',
         block_height: '100',
-        entity_type: 'trust_registry',
+        entity_type: 'TrustRegistry',
         entity_id: '5',
         account: 'verana1xyz',
         msg: 'MsgCreateTrustRegistry',
-        changes: { did: { old: null, new: 'did:web:eco.example.com' } },
+        changes: { did: 'did:web:eco.example.com' },
       },
       {
         timestamp: '2026-01-01T00:00:00Z',
@@ -237,11 +237,11 @@ describe('pollOnce', () => {
           activity: [{
             timestamp: '2026-01-01T00:00:00Z',
             block_height: '100',
-            entity_type: 'permission',
+            entity_type: 'Permission',
             entity_id: '1',
             account: 'verana1abc',
             msg: 'MsgCreatePermission',
-            changes: { did: { old: null, new: 'did:web:test.example.com' } },
+            changes: { did: 'did:web:test.example.com' },
           }],
         })
         .mockResolvedValueOnce({

@@ -11,7 +11,7 @@ export interface ActivityItem {
   entity_id: string;
   account: string;
   msg: string;
-  changes: Record<string, { old: unknown; new: unknown }>;
+  changes: { did?: string; grantee?: string; [key: string]: unknown } | null;
 }
 
 export interface ChangesResponse {
