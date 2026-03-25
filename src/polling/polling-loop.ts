@@ -94,7 +94,6 @@ export async function pollOnce(
 
     if (affectedDids.size > 0) {
       await runVerrePass(affectedDids, indexer, indexerHeight, config.TRUST_TTL, verifiablePublicRegistries, skipDigestSRICheck);
-      await retryEligibleDids(indexer, indexerHeight, config, verifiablePublicRegistries, skipDigestSRICheck);
       didsAffected += affectedDids.size;
     }
 
@@ -129,9 +128,6 @@ export async function pollOnce(
         // Unified verre pass: DID resolution + VP dereferencing + trust evaluation
         await runVerrePass(affectedDids, indexer, target, config.TRUST_TTL, verifiablePublicRegistries, skipDigestSRICheck);
 
-        // Retry eligible failures from previous cycles
-        await retryEligibleDids(indexer, target, config, verifiablePublicRegistries, skipDigestSRICheck);
-
         didsAffected += affectedDids.size;
       }
 
@@ -148,7 +144,10 @@ export async function pollOnce(
   // 3. TTL-driven refresh (runs regardless of block processing errors)
   await refreshExpiredEvaluations(indexer, lastBlock, config, verifiablePublicRegistries, skipDigestSRICheck);
 
-  // 4. Cleanup permanently failed retries \u2192 mark UNTRUSTED
+  // 4. Retry eligible failures from previous cycles (once per day, independent of block activity)
+  await retryEligibleDids(indexer, lastBlock, config, verifiablePublicRegistries, skipDigestSRICheck);
+
+  // 5. Cleanup permanently failed retries \u2192 mark UNTRUSTED
   const expired = await cleanupExpiredRetries(config.POLL_OBJECT_CACHING_RETRY_DAYS);
   if (expired.length > 0) {
     for (const resourceId of expired) {
