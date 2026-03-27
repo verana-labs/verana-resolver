@@ -3,6 +3,7 @@ import { getPool } from '../db/index.js';
 import { isRedisReady } from '../cache/redis-client.js';
 import { getLastProcessedBlock } from '../polling/resolver-state.js';
 import { getConfig } from '../config/index.js';
+import pkg from '../../package.json'
 
 interface HealthResponse {
   status: 'ok' | 'syncing' | 'degraded';
@@ -12,6 +13,7 @@ interface HealthResponse {
   instanceRole: string;
   postgresConnected: boolean;
   redisConnected: boolean;
+  version: string;
 }
 
 async function checkPostgres(): Promise<boolean> {
@@ -67,6 +69,7 @@ export async function registerHealthRoutes(server: FastifyInstance): Promise<voi
             instanceRole: { type: 'string' },
             postgresConnected: { type: 'boolean' },
             redisConnected: { type: 'boolean' },
+            version: { type: 'string' },
           },
         },
       },
@@ -95,6 +98,7 @@ export async function registerHealthRoutes(server: FastifyInstance): Promise<voi
       instanceRole: config.INSTANCE_ROLE,
       postgresConnected: pgConnected,
       redisConnected,
+      version: `v${pkg.version}`,
     };
 
     return reply.send(response);
