@@ -43,6 +43,14 @@ export async function getFullTrustResult(did: string): Promise<TrustResult | nul
   return row.rows[0].full_result_json as TrustResult;
 }
 
+export async function invalidateTrustTtl(did: string): Promise<void> {
+  const pool = getPool();
+  await pool.query(
+    `UPDATE trust_results SET expires_at = NOW() WHERE did = $1`,
+    [did],
+  );
+}
+
 export async function markUntrusted(did: string, block: number, ttlSeconds: number): Promise<void> {
   const pool = getPool();
   const now = new Date();
