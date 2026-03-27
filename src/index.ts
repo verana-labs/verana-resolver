@@ -13,6 +13,7 @@ import { runMigrations } from './db/migrate.js';
 import { connectRedis, disconnectRedis } from './cache/redis-client.js';
 import { startPollingLoop, parseVprRegistries } from './polling/polling-loop.js';
 import { createInjectDidRoute } from './routes/inject-did.js';
+import { createQ5oute } from './routes/refresh.js';
 import { registerSwagger } from './swagger.js';
 import { createLogger } from './logger.js';
 import { registerResolverRoutes } from './routes/version.js';
@@ -73,6 +74,7 @@ async function main(): Promise<void> {
   await createQ2Route(parseVprRegistries(config.VPR_REGISTRIES))(server);
   await createQ3Route(parseVprRegistries(config.VPR_REGISTRIES))(server);
   await createQ4Route(indexer)(server);
+  await createQ5oute(indexer, config)(server);
 
   // Dev-mode: inject DID endpoint
   if (config.INJECT_DID_ENDPOINT_ENABLED) {
