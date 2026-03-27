@@ -15,6 +15,7 @@ import { startPollingLoop, parseVprRegistries } from './polling/polling-loop.js'
 import { createInjectDidRoute } from './routes/inject-did.js';
 import { registerSwagger } from './swagger.js';
 import { createLogger } from './logger.js';
+import { registerResolverRoutes } from './routes/version.js';
 
 const logger = createLogger('main');
 
@@ -55,6 +56,9 @@ async function main(): Promise<void> {
 
   // Health + readiness
   await registerHealthRoutes(server);
+
+  // Resolver
+  await registerResolverRoutes(server);
 
   // Prometheus metrics
   server.get('/metrics', async (_request, reply) => {
