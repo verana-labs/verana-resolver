@@ -19,6 +19,7 @@ The **Verana Trust Resolver** is a core infrastructure component of the [Verana]
 | `GET /v1/trust/issuer-authorization` | Q2 — Check if a DID is an authorized issuer for a credential schema |
 | `GET /v1/trust/verifier-authorization` | Q3 — Check if a DID is an authorized verifier for a credential schema |
 | `GET /v1/trust/ecosystem-participant` | Q4 — Check if a DID holds any active permissions in an ecosystem |
+| `GET /v1/trust/refresh` | Q5 — Refresh and check trust resolution for a unique DID |
 | `GET /v1/health` | Health check |
 
 ## Container Environment Variables
