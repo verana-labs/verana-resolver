@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.1](https://github.com/verana-labs/verana-resolver/compare/v1.0.0...v1.0.1) (2026-06-20)
+
+
+### Bug Fixes
+
+* use pnpm in Docker image and patch didwebvh-ts ([#143](https://github.com/verana-labs/verana-resolver/issues/143)) ([e7992cd](https://github.com/verana-labs/verana-resolver/commit/e7992cde1e28cc665d8f0edad4d56bc44af8d635))
+
 ## [1.0.0](https://github.com/verana-labs/verana-resolver/compare/v0.2.0...v1.0.0) (2026-06-17)
 
 
