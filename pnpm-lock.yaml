@@ -4,6 +4,11 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+patchedDependencies:
+  didwebvh-ts@2.7.5:
+    hash: 376c925f213f02e2497cc721ade4338350e31f3fddf6ec35c65e7443ca8dcf08
+    path: patches/didwebvh-ts@2.7.5.patch
+
 importers:
 
   .:
@@ -2324,7 +2329,7 @@ snapshots:
       ajv-formats: 3.0.1(ajv@8.20.0)
       canonicalize: 2.1.0
       did-resolver: 4.1.0
-      didwebvh-ts: 2.7.5
+      didwebvh-ts: 2.7.5(patch_hash=376c925f213f02e2497cc721ade4338350e31f3fddf6ec35c65e7443ca8dcf08)
       jsonld: 8.3.3(web-streams-polyfill@3.3.3)
       tslog: 4.10.2
       web-did-resolver: 2.0.32
@@ -2504,7 +2509,7 @@ snapshots:
 
   did-resolver@4.1.0: {}
 
-  didwebvh-ts@2.7.5:
+  didwebvh-ts@2.7.5(patch_hash=376c925f213f02e2497cc721ade4338350e31f3fddf6ec35c65e7443ca8dcf08):
     dependencies:
       '@noble/hashes': 1.8.0
       cookie: 1.1.1

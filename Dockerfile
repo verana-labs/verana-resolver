@@ -6,18 +6,24 @@
 FROM node:22-alpine AS deps
 WORKDIR /app
 
+# Enable pnpm via corepack
+RUN corepack enable
+
 # Copy package files
-COPY package.json ./
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY patches ./patches
 
 # Install all dependencies (including devDependencies for build)
-RUN --mount=type=cache,target=/root/.npm \
-    npm install
+RUN --mount=type=cache,target=/root/.local/share/pnpm/store \
+    pnpm install --frozen-lockfile
 
 # ============================================
 # Stage 2: Build the application
 # ============================================
 FROM node:22-alpine AS builder
 WORKDIR /app
+
+RUN corepack enable
 
 # Copy dependencies from deps stage
 COPY --from=deps /app/node_modules ./node_modules
@@ -27,7 +33,7 @@ COPY . .
 
 # Build TypeScript → dist/
 ENV NODE_ENV=production
-RUN npm run build
+RUN pnpm run build
 
 # ============================================
 # Stage 3: Production runner (minimal image)
@@ -37,14 +43,17 @@ WORKDIR /app
 
 ENV NODE_ENV=production
 
+RUN corepack enable
+
 # Create non-root user for security
 RUN addgroup -S -g 1001 nodejs \
     && adduser -S -u 1001 -G nodejs resolver
 
 # Copy package files and install production-only dependencies
-COPY --from=builder /app/package.json ./
-RUN --mount=type=cache,target=/root/.npm \
-    npm install --omit=dev
+COPY --from=builder /app/package.json /app/pnpm-lock.yaml /app/pnpm-workspace.yaml ./
+COPY --from=builder /app/patches ./patches
+RUN --mount=type=cache,target=/root/.local/share/pnpm/store \
+    pnpm install --prod --frozen-lockfile
 
 # Copy built application
 COPY --from=builder --chown=resolver:nodejs /app/dist ./dist

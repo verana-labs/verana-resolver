@@ -50,9 +50,9 @@ This document summarizes the GitHub workflow rules and conventions for the **ver
 Before pushing any code to GitHub via MCP tools, **always**:
 
 1. Pull / checkout the branch locally.
-2. Run `npm install` to install dependencies.
-3. Run `npm run build` (or `tsc --noEmit`) to verify TypeScript compiles.
-4. Run `npm test` to verify all unit tests pass.
+2. Run `pnpm install` to install dependencies.
+3. Run `pnpm run build` (or `tsc --noEmit`) to verify TypeScript compiles.
+4. Run `pnpm test` to verify all unit tests pass.
 5. Only then push to GitHub and create the PR.
 
 > **Exception**: documentation-only changes (`.md` files) do not require build/test verification.
