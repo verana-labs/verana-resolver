@@ -69,22 +69,22 @@ The **Verana Trust Resolver** is a core infrastructure component of the [Verana]
 
 ```bash
 # Install dependencies
-npm install
+pnpm install
 
 # Type-check
-npm run typecheck
+pnpm run typecheck
 
 # Run tests
-npm test
+pnpm test
 
 # Start in dev mode (with hot reload)
-npm run dev
+pnpm run dev
 
 # Build for production
-npm run build
+pnpm run build
 
 # Start production server
-npm start
+pnpm start
 ```
 
 ## License

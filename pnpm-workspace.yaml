@@ -1,0 +1,2 @@
+patchedDependencies:
+  didwebvh-ts@2.7.5: patches/didwebvh-ts@2.7.5.patch
