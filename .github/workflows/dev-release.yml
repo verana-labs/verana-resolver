@@ -14,15 +14,15 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           fetch-depth: 0
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0
 
       - name: Setup node v22
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 22
           cache: pnpm
@@ -33,88 +33,81 @@ jobs:
       - name: Run tests
         run: pnpm test
 
-      - name: Run semantic-release
-        id: semantic
-        uses: codfish/semantic-release-action@v3
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          branches: |
-            [
-              'release',
-              {
-                name: 'main',
-                prerelease: 'dev'
-              }
-            ]
-          plugins: |
-            [
+      - name: Prepare semantic-release config
+        run: |
+          cat > .releaserc.json <<'EOF'
+          {
+            "branches": [
+              "release",
+              { "name": "main", "prerelease": "dev" }
+            ],
+            "plugins": [
               [
                 "@semantic-release/commit-analyzer",
                 {
                   "preset": "angular",
                   "releaseRules": [
-                    {
-                      "type": "refactor",
-                      "release": "patch"
-                    },
-                    {
-                      "type": "build",
-                      "release": "patch"
-                    }
+                    { "type": "refactor", "release": "patch" },
+                    { "type": "build", "release": "patch" }
                   ]
                 }
               ],
               [
                 "@semantic-release/npm",
-                {
-                  "npmPublish": false
-                }
+                { "npmPublish": false }
               ],
-              "@semantic-release/release-notes-generator",
+              "@semantic-release/release-notes-generator"
             ]
+          }
+          EOF
+
+      - name: Run semantic-release
+        id: semantic
+        uses: cycjimmy/semantic-release-action@16ca923e6ccbb50770c415a0ccd43709a8c5f7a4 # v4.2.2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
-        if: steps.semantic.outputs.new-release-published == 'true'
+        if: steps.semantic.outputs.new_release_published == 'true'
 
       - name: Docker login
         uses: docker/login-action@v3
-        if: steps.semantic.outputs.new-release-published == 'true'
+        if: steps.semantic.outputs.new_release_published == 'true'
         with:
           username: ${{ secrets.DOCKER_HUB_LOGIN }}
           password: ${{ secrets.DOCKER_HUB_PWD }}
 
       - name: Build & push dev Docker image
         uses: docker/build-push-action@v6
-        if: steps.semantic.outputs.new-release-published == 'true'
+        if: steps.semantic.outputs.new_release_published == 'true'
         with:
           context: .
           file: ./Dockerfile
           push: true
           tags: |
             ${{ secrets.DOCKER_HUB_LOGIN }}/verana-resolver:dev
-            ${{ secrets.DOCKER_HUB_LOGIN }}/verana-resolver:v${{ steps.semantic.outputs.release-major }}-dev
-            ${{ secrets.DOCKER_HUB_LOGIN }}/verana-resolver:v${{ steps.semantic.outputs.release-major }}.${{ steps.semantic.outputs.release-minor }}-dev
-            ${{ secrets.DOCKER_HUB_LOGIN }}/verana-resolver:v${{ steps.semantic.outputs.release-version }}
+            ${{ secrets.DOCKER_HUB_LOGIN }}/verana-resolver:v${{ steps.semantic.outputs.new_release_major_version }}-dev
+            ${{ secrets.DOCKER_HUB_LOGIN }}/verana-resolver:v${{ steps.semantic.outputs.new_release_major_version }}.${{ steps.semantic.outputs.new_release_minor_version }}-dev
+            ${{ secrets.DOCKER_HUB_LOGIN }}/verana-resolver:v${{ steps.semantic.outputs.new_release_version }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
       - name: Set up Helm
-        if: steps.semantic.outputs.new-release-published == 'true'
+        if: steps.semantic.outputs.new_release_published == 'true'
         uses: azure/setup-helm@v3
 
       - name: Log in to Docker Hub Helm Registry
-        if: steps.semantic.outputs.new-release-published == 'true'
+        if: steps.semantic.outputs.new_release_published == 'true'
         run: |
           echo "${{ secrets.DOCKER_HUB_PWD }}" | helm registry login -u "${{ secrets.DOCKER_HUB_LOGIN }}" --password-stdin docker.io
 
       - name: Push Helm chart to Docker Hub OCI repo
-        if: steps.semantic.outputs.new-release-published == 'true'
+        if: steps.semantic.outputs.new_release_published == 'true'
         run: |
           TAGS=(
-            "v${{ steps.semantic.outputs.release-major }}.${{ steps.semantic.outputs.release-minor }}-dev"
-            "v${{ steps.semantic.outputs.release-version }}"
+            "v${{ steps.semantic.outputs.new_release_major_version }}.${{ steps.semantic.outputs.new_release_minor_version }}-dev"
+            "v${{ steps.semantic.outputs.new_release_version }}"
           )
           for tag in "${TAGS[@]}"; do
             CHART_NAME=$(grep '^name:' ./charts/Chart.yaml | awk '{print $2}')
@@ -124,16 +117,16 @@ jobs:
           done
 
       - name: Publish Summary
-        if: steps.semantic.outputs.new-release-published == 'true'
+        if: steps.semantic.outputs.new_release_published == 'true'
         run: |
           echo "Docker Images" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "- verana-resolver:dev" >> $GITHUB_STEP_SUMMARY
-          echo "- verana-resolver:v${{ steps.semantic.outputs.release-major }}-dev" >> $GITHUB_STEP_SUMMARY
-          echo "- verana-resolver:v${{ steps.semantic.outputs.release-major }}.${{ steps.semantic.outputs.release-minor }}-dev" >> $GITHUB_STEP_SUMMARY
-          echo "- verana-resolver:v${{ steps.semantic.outputs.release-version }}" >> $GITHUB_STEP_SUMMARY
+          echo "- verana-resolver:v${{ steps.semantic.outputs.new_release_major_version }}-dev" >> $GITHUB_STEP_SUMMARY
+          echo "- verana-resolver:v${{ steps.semantic.outputs.new_release_major_version }}.${{ steps.semantic.outputs.new_release_minor_version }}-dev" >> $GITHUB_STEP_SUMMARY
+          echo "- verana-resolver:v${{ steps.semantic.outputs.new_release_version }}" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "Helm Charts" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "- verana-resolver-chart:v${{ steps.semantic.outputs.release-major }}.${{ steps.semantic.outputs.release-minor }}-dev" >> $GITHUB_STEP_SUMMARY
-          echo "- verana-resolver-chart:v${{ steps.semantic.outputs.release-version }}" >> $GITHUB_STEP_SUMMARY
+          echo "- verana-resolver-chart:v${{ steps.semantic.outputs.new_release_major_version }}.${{ steps.semantic.outputs.new_release_minor_version }}-dev" >> $GITHUB_STEP_SUMMARY
+          echo "- verana-resolver-chart:v${{ steps.semantic.outputs.new_release_version }}" >> $GITHUB_STEP_SUMMARY
