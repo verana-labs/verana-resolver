@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.2](https://github.com/verana-labs/verana-resolver/compare/v1.0.1...v1.0.2) (2026-06-26)
+
+
+### Bug Fixes
+
+* solve problem semantic release with malware ([#145](https://github.com/verana-labs/verana-resolver/issues/145)) ([9db312e](https://github.com/verana-labs/verana-resolver/commit/9db312e4f951b26c0c0a93fc9bd43105c908c255))
+
 ## [1.0.1](https://github.com/verana-labs/verana-resolver/compare/v1.0.0...v1.0.1) (2026-06-20)
 
 
