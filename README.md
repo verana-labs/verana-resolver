@@ -47,6 +47,7 @@ The **Verana Trust Resolver** is a core infrastructure component of the [Verana]
 | `POLL_INTERVAL` | `5` | Seconds between polling cycles |
 | `CACHE_TTL` | `86400` | Dereferenced object cache TTL in seconds (24h) |
 | `TRUST_TTL` | `3600` | Trust evaluation result TTL in seconds (1h) |
+| `TRUST_TTL_TRANSIENT` | `300` | TTL for verdicts caused by transient upstream failures (5xx/timeout while dereferencing) - retried once in-pass, then cached briefly instead of for the full `TRUST_TTL` |
 | `POLL_OBJECT_CACHING_RETRY_DAYS` | `7` | Maximum retry window for failed dereferencing (days) |
 | `DISABLE_DIGEST_SRI_VERIFICATION` | `false` | When `true`, skip digestSRI verification of JSON schema content and log that it was omitted |
 | `ECS_DIGEST_SERVICE` | *(spec v4)* | SHA-384 JCS digest of the ServiceCredential JSON schema (spec [ECS-TR]) |

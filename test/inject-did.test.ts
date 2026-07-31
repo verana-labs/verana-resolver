@@ -22,6 +22,7 @@ const baseConfig: EnvConfig = {
   POLL_INTERVAL: 5,
   CACHE_TTL: 86400,
   TRUST_TTL: 3600,
+  TRUST_TTL_TRANSIENT: 300,
   TRUST_TTL_REFRESH_RATIO: 0.2,
   POLL_OBJECT_CACHING_RETRY_DAYS: 7,
   POSTGRES_HOST: 'localhost',
@@ -113,6 +114,7 @@ describe('POST /v1/inject/did — verre pass success', () => {
       baseConfig.TRUST_TTL,
       [],
       false,
+      baseConfig.TRUST_TTL_TRANSIENT,
     );
   });
 });

@@ -80,6 +80,7 @@ export function createQ5oute(
           config.TRUST_TTL,
           verifiablePublicRegistries,
           skipDigestSRICheck,
+          config.TRUST_TTL_TRANSIENT,
         );
 
         // If resolution succeeded, remove from reattemptable in case it was queued

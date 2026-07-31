@@ -93,7 +93,7 @@ export async function pollOnce(
     logger.info({ count: affectedDids.size, indexerHeight }, 'Initial sync: running verre pass');
 
     if (affectedDids.size > 0) {
-      await runVerrePass(affectedDids, indexer, indexerHeight, config.TRUST_TTL, verifiablePublicRegistries, skipDigestSRICheck);
+      await runVerrePass(affectedDids, indexer, indexerHeight, config.TRUST_TTL, verifiablePublicRegistries, skipDigestSRICheck, config.TRUST_TTL_TRANSIENT);
       didsAffected += affectedDids.size;
     }
 
@@ -126,7 +126,7 @@ export async function pollOnce(
       if (affectedDids.size > 0) {
 
         // Unified verre pass: DID resolution + VP dereferencing + trust evaluation
-        await runVerrePass(affectedDids, indexer, target, config.TRUST_TTL, verifiablePublicRegistries, skipDigestSRICheck);
+        await runVerrePass(affectedDids, indexer, target, config.TRUST_TTL, verifiablePublicRegistries, skipDigestSRICheck, config.TRUST_TTL_TRANSIENT);
 
         didsAffected += affectedDids.size;
       }
@@ -196,7 +196,7 @@ async function retryEligibleDids(
   );
   if (dids.size === 0) return;
 
-  const result = await runVerrePass(dids, indexer, currentBlock, config.TRUST_TTL, verifiablePublicRegistries, skipDigestSRICheck);
+  const result = await runVerrePass(dids, indexer, currentBlock, config.TRUST_TTL, verifiablePublicRegistries, skipDigestSRICheck, config.TRUST_TTL_TRANSIENT);
 
   // Remove successfully retried resources
   for (const did of result.succeeded) {
@@ -228,5 +228,5 @@ async function refreshExpiredEvaluations(
     'Refreshing trust evaluations approaching expiration',
   );
 
-  await runVerrePass(refreshDids, indexer, currentBlock, config.TRUST_TTL, verifiablePublicRegistries, skipDigestSRICheck);
+  await runVerrePass(refreshDids, indexer, currentBlock, config.TRUST_TTL, verifiablePublicRegistries, skipDigestSRICheck, config.TRUST_TTL_TRANSIENT);
 }
