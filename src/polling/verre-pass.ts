@@ -192,6 +192,42 @@ function buildTrustResult(
 }
 
 // ---------------------------------------------------------------------------
+// Transient failure detection
+// ---------------------------------------------------------------------------
+
+// A verdict caused by an upstream hiccup (a flapping 5xx on a VP fetch, a
+// timeout, a dropped connection) is indistinguishable from a genuinely
+// untrusted service in the stored result - but it must not be cached as
+// UNTRUSTED for the full TRUST_TTL. These patterns match the error strings
+// verre produces for such failures ("Failed to fetch data from <url>:
+// <status> <text>" and Node network error codes). Definitive HTTP answers
+// (404, 410, 403, ...) are deliberately NOT matched: a removed or refused
+// VP is a real trust signal.
+const TRANSIENT_ERROR_PATTERNS: RegExp[] = [
+  /failed to fetch data from .*?:\s*(?:408|425|429|5\d\d)\b/i,
+  /\b(?:ETIMEDOUT|ECONNREFUSED|ECONNRESET|ECONNABORTED|EAI_AGAIN|ENETUNREACH|EHOSTUNREACH|EPIPE|UND_ERR\w*)\b/,
+  /\b(?:socket hang up|fetch failed|network error|timed out|timeout|aborted)\b/i,
+];
+
+/** True when a non-TRUSTED result carries at least one transient
+ *  (network / upstream availability) failure among its errors. */
+export function isTransientTrustResult(result: TrustResult): boolean {
+  if (result.trustStatus === 'TRUSTED') return false;
+  const messages = [
+    ...result.failedCredentials.map((f) => f.error),
+    ...result.dereferenceErrors.map((d) => d.error),
+  ];
+  return messages.some(
+    (m) => typeof m === 'string' && TRANSIENT_ERROR_PATTERNS.some((p) => p.test(m)),
+  );
+}
+
+const TRANSIENT_RETRY_DELAY_MS = 2_000;
+const DEFAULT_TRANSIENT_TTL_SECONDS = 300;
+
+const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+// ---------------------------------------------------------------------------
 // Unified pass: replaces runPass1 + runPass2
 // ---------------------------------------------------------------------------
 
@@ -202,6 +238,7 @@ export async function runVerrePass(
   trustTtlSeconds: number,
   verifiablePublicRegistries: VerifiablePublicRegistry[],
   skipDigestSRICheck: boolean,
+  transientTtlSeconds: number = DEFAULT_TRANSIENT_TTL_SECONDS,
 ): Promise<{ succeeded: string[]; failed: string[] }> {
   const succeeded: string[] = [];
   const failed: string[] = [];
@@ -219,11 +256,12 @@ export async function runVerrePass(
 
       // 2. Single verre call: DID resolution + VP dereferencing + trust evaluation
       logger.debug({ did }, 'Calling verre resolveDID');
-      const resolution = await verreResolveDID(did, {
+      const verreOptions = {
         verifiablePublicRegistries,
         skipDigestSRICheck,
         logger: verreLogger,
-      });
+      };
+      let resolution = await verreResolveDID(did, verreOptions);
 
       logger.debug(
         {
@@ -238,8 +276,38 @@ export async function runVerrePass(
         'Verre resolveDID complete',
       );
 
-      // 3. Map verre result to TrustResult and store
-      const trustResult = buildTrustResult(did, resolution, currentBlock, trustTtlSeconds);
+      // 3. Map verre result to TrustResult
+      let trustResult = buildTrustResult(did, resolution, currentBlock, trustTtlSeconds);
+
+      // 3b. A verdict produced by a transient upstream failure gets one
+      // immediate retry: most flaps (a 503 on a VP fetch, a dropped
+      // connection) heal within seconds.
+      if (isTransientTrustResult(trustResult)) {
+        logger.warn(
+          { did, errors: trustResult.failedCredentials.map((f) => f.error) },
+          'Verre pass: transient upstream failure — retrying once',
+        );
+        await sleep(TRANSIENT_RETRY_DELAY_MS);
+        await deleteCachedFile(did);
+        resolution = await verreResolveDID(did, verreOptions);
+        trustResult = buildTrustResult(did, resolution, currentBlock, trustTtlSeconds);
+      }
+
+      // 3c. Still failing on a transient error: store the verdict with the
+      // short TTL so it re-evaluates quickly instead of poisoning the DID
+      // for the full TRUST_TTL, and queue a reattempt.
+      if (isTransientTrustResult(trustResult)) {
+        trustResult = {
+          ...trustResult,
+          expiresAt: new Date(Date.now() + transientTtlSeconds * 1000).toISOString(),
+        };
+        await addReattemptable(did, 'TRUST_EVAL', 'TRANSIENT');
+        logger.warn(
+          { did, transientTtlSeconds },
+          'Verre pass: transient failure persisted — storing short-lived verdict',
+        );
+      }
+
       await upsertTrustResult(trustResult);
 
       logger.info(
@@ -257,9 +325,11 @@ export async function runVerrePass(
     } catch (err) {
       logger.error({ did, err }, 'Verre pass: unexpected error');
 
-      // On failure, mark as reattemptable and UNTRUSTED
+      // On failure, mark as reattemptable and UNTRUSTED. A thrown error is
+      // transient by nature (crash, timeout, network) - never a verdict on
+      // the DID itself - so the UNTRUSTED marker uses the short TTL.
       await addReattemptable(did, 'TRUST_EVAL', 'TRANSIENT');
-      await markUntrusted(did, currentBlock, trustTtlSeconds);
+      await markUntrusted(did, currentBlock, Math.min(transientTtlSeconds, trustTtlSeconds));
       failed.push(did);
     }
   }

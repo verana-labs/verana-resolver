@@ -70,6 +70,7 @@ export function createInjectDidRoute(
       const passResult = await runVerrePass(
         affectedDids, indexer, currentBlock, config.TRUST_TTL,
         verifiablePublicRegistries, skipDigestSRICheck,
+        config.TRUST_TTL_TRANSIENT,
       );
 
       const response: InjectDidResponse = {

@@ -12,6 +12,10 @@ const envSchema = z.object({
   POLL_INTERVAL: z.coerce.number().int().positive().default(5),
   CACHE_TTL: z.coerce.number().int().positive().default(86400),
   TRUST_TTL: z.coerce.number().int().positive().default(3600),
+  // Short-lived TTL for verdicts produced by transient upstream failures
+  // (5xx / timeout while dereferencing a VP): the failure must not poison
+  // the verdict for the full TRUST_TTL.
+  TRUST_TTL_TRANSIENT: z.coerce.number().int().positive().default(300),
   TRUST_TTL_REFRESH_RATIO: z.coerce.number().min(0).max(1).default(0.2),
   POLL_OBJECT_CACHING_RETRY_DAYS: z.coerce.number().int().positive().default(7),
 
