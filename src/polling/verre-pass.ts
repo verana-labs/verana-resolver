@@ -64,7 +64,7 @@ function mapEcsType(schemaType: ICredential['schemaType']): EcsType {
   }
 }
 
-function extractClaimsFromCredential(cred: ICredential): Record<string, unknown> {
+export function extractClaimsFromCredential(cred: ICredential): Record<string, unknown> {
   const claims: Record<string, unknown> = { id: cred.id, issuer: cred.issuer };
 
   switch (cred.schemaType) {
@@ -73,6 +73,7 @@ function extractClaimsFromCredential(cred: ICredential): Record<string, unknown>
       claims.name = svc.name;
       claims.type = svc.type;
       claims.description = svc.description;
+      claims.logo = svc.logo;
       claims.minimumAgeRequired = svc.minimumAgeRequired;
       claims.termsAndConditions = svc.termsAndConditions;
       claims.termsAndConditionsDigestSri = svc.termsAndConditionsDigestSri;
@@ -83,6 +84,7 @@ function extractClaimsFromCredential(cred: ICredential): Record<string, unknown>
     case ECS.ORG: {
       const org = cred as IOrg;
       claims.name = org.name;
+      claims.logo = org.logo;
       claims.registryId = org.registryId;
       claims.registryUri = org.registryUri;
       claims.address = org.address;
@@ -95,6 +97,7 @@ function extractClaimsFromCredential(cred: ICredential): Record<string, unknown>
     case ECS.PERSONA: {
       const persona = cred as IPersona;
       claims.name = persona.name;
+      claims.avatar = persona.avatar;
       claims.controllerCountryCode = persona.controllerCountryCode;
       claims.controllerJurisdiction = persona.controllerJurisdiction;
       claims.description = persona.description;
