@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.3](https://github.com/verana-labs/verana-resolver/compare/v1.0.2...v1.0.3) (2026-08-07)
+
+
+### Bug Fixes
+
+* expose service/org logo and persona avatar in resolved claims ([#151](https://github.com/verana-labs/verana-resolver/issues/151)) ([a6b11d9](https://github.com/verana-labs/verana-resolver/commit/a6b11d9e9f21f5f509cd75cee70f565ac91c1916))
+
 ## [1.0.2](https://github.com/verana-labs/verana-resolver/compare/v1.0.1...v1.0.2) (2026-08-03)
 
 
