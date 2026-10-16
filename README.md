@@ -1,5 +1,10 @@
 # Verana Trust Resolver
 
+> **NOTE: Deprecation Notice**
+> 
+> Since trust resolution features are now integrated in Verana Indexer and all chains migrated to v4, this project is not compatible anymore. For any new feature regarding trust resolution, please go to https://github.com/verana-labs/verana-indexer
+>
+
 The **Verana Trust Resolver** is a core infrastructure component of the [Verana](https://verana.io) ecosystem. It continuously ingests state from the **Verana Indexer**, resolves decentralized identifiers (DIDs), dereferences verifiable credentials (VCs) presented as [linked-vp](https://identity.foundation/linked-vp/) in DID Documents, and validates trust according to the **Verifiable Trust Specification**.
 
 ## Features
